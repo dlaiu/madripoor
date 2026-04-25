@@ -1,19 +1,20 @@
 # Development Roadmap
 
-## Milestone 1 — Project Scaffold & Board Rendering
+## ✅ Milestone 1 — Project Scaffold & Board Rendering
 **Goal:** See the hex board in a browser.
 
-- SvelteKit project init, Vercel deploy pipeline
-- Static hex board rendered in SVG (15 tiles, 2·3·4·3·3 layout, correct adjacency)
-- Tiles labeled, colored tiles visually distinct (red, blue, green)
-- No interactivity yet — just verify the layout is right
+- SvelteKit + TypeScript project, `@sveltejs/adapter-vercel` configured
+- Static hex board rendered in SVG (15 tiles, 2·3·4·3·3 flat-top layout)
+- Axial coordinate system with `getNeighbors()` helper (used in M3)
+- 6 colored tiles (2× red, blue, green) as visual placeholders
+- Deployed to Vercel via GitHub
 
 ---
 
 ## Milestone 2 — Local Single-Player Core Loop (No Multiplayer)
 **Goal:** One player can play through a round against dummy opponents, end-to-end.
 
-- Card hand rendered (15 cards, suit/charisma values shown)
+- Card hand rendered (15 cards, color/charisma values shown)
 - Drag-and-drop card placement onto tiles
 - Server action resolves dice rolls and scores per tile (solo tiles only, no groups yet)
 - Resolution screen: who won each tile, round winner declared
