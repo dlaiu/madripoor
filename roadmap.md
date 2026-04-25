@@ -11,15 +11,18 @@
 
 ---
 
-## Milestone 2 — Local Single-Player Core Loop (No Multiplayer)
-**Goal:** One player can play through a round against dummy opponents, end-to-end.
+## ✅ Milestone 2 — Local Single-Player Core Loop (No Multiplayer)
+**Goal:** One player can play through a round against a CPU opponent, end-to-end.
 
-- Card hand rendered (15 cards, color/charisma values shown)
-- Drag-and-drop card placement onto tiles
-- Server action resolves dice rolls and scores per tile (solo tiles only, no groups yet)
-- Resolution screen: who won each tile, round winner declared
-- Round win counter tracked in state
-- Victory condition triggers game-over screen
+- 15-card hand with color/charisma values; deck factory enforces correct distribution (5×CHA1, 7×CHA2, 3×CHA3, 1 Party Leader per color group)
+- Click-to-select + click-to-place card placement; placed tiles show card shape, CHA value, and ★Leader badge
+- Swap/undo: clicking a placed tile with a card selected swaps the cards; clicking with no card selected returns it to hand
+- Confirm button (enabled only when all 15 cards placed) triggers reveal phase
+- CPU places cards randomly; all 15 tiles resolved simultaneously with `charisma × 1d6` scoring
+- Side panel shows per-tile vote breakdown (CHA × roll = votes) for both players, persists through round end
+- Round win counter and 3-win game-over condition
+- 28 unit tests covering resolver, deck factory, and game state actions
+- Note: `humanPlacements` uses `Record<number, Card>` (not Map) — Svelte 5 reactive proxy doesn't propagate Map mutations across component prop boundaries
 
 This milestone proves the core game loop works before touching multiplayer.
 
