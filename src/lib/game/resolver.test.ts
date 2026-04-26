@@ -101,9 +101,10 @@ describe('resolveRound', () => {
 		const tileIds = TILES.map((t) => t.id);
 		const humanPlacements: Record<number, Card> = Object.fromEntries(tileIds.map((id, i) => [id, makeCard(`h-${i}`)]));
 		const cpuPlacements = new Map(tileIds.map((id, i) => [id, makeCard(`c-${i}`)]));
-		const results = resolveRound(humanPlacements, cpuPlacements);
-		expect(results.length).toBe(15);
-		const resultTileIds = results.map((r) => r.tileId).sort((a, b) => a - b);
+		const { tileResults, groupResults } = resolveRound(humanPlacements, cpuPlacements, [], null);
+		expect(groupResults).toHaveLength(0);
+		expect(tileResults).toHaveLength(15);
+		const resultTileIds = tileResults.map((r) => r.tileId).sort((a, b) => a - b);
 		expect(resultTileIds).toEqual([...tileIds].sort((a, b) => a - b));
 	});
 });

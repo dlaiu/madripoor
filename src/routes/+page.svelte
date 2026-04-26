@@ -2,8 +2,9 @@
 	import Board from '$lib/board/Board.svelte';
 	import CardHand from '$lib/components/CardHand.svelte';
 	import PhaseOverlay from '$lib/components/PhaseOverlay.svelte';
+	import GerrymanderingPanel from '$lib/components/GerrymanderingPanel.svelte';
 	import RoundSummary from '$lib/components/RoundSummary.svelte';
-	import { game, placeCard, unplaceCard, startReveal } from '$lib/game/gameState.svelte.js';
+	import { game, placeCard, unplaceCard, startReveal, gerryClickTile } from '$lib/game/gameState.svelte.js';
 	import type { TileColor } from '$lib/board/hex.js';
 
 	const coloredTiles: Record<number, TileColor> = {
@@ -14,10 +15,14 @@
 
 	function handleTileClick(tileId: number) {
 		if (game.selectedCard) {
-			placeCard(tileId); // place, or swap if occupied
+			placeCard(tileId);
 		} else if (tileId in game.currentRound.humanPlacements) {
-			unplaceCard(tileId); // return card to hand
+			unplaceCard(tileId);
 		}
+	}
+
+	function handleGerryTileClick(tileId: number) {
+		gerryClickTile(tileId);
 	}
 
 	const allPlaced = $derived(game.phase === 'placement' && game.humanHand.length === 0);
@@ -27,15 +32,29 @@
 		game.phase === 'round_end' ||
 		game.phase === 'game_over'
 	);
+	const hasOverlay = $derived(game.phase !== 'placement');
 
 	const hintText = $derived(() => {
 		if (game.selectedCard) return 'Click a tile to place — or click a placed tile to swap';
 		if (allPlaced) return 'All cards placed — confirm when ready';
 		return 'Select a card from your hand';
 	});
+
+	const gerryHintText = $derived(() => {
+		if (game.gerrySelectedTileId !== null) {
+			return `Tile ${game.gerrySelectedTileId} selected — click an adjacent tile to group`;
+		}
+		return 'Click a tile to start grouping, or click a grouped tile to ungroup it';
+	});
+
+	const tileClickHandler = $derived(
+		game.phase === 'placement' ? handleTileClick :
+		game.phase === 'gerrymandering' ? handleGerryTileClick :
+		undefined
+	);
 </script>
 
-<main class:has-overlay={game.phase !== 'placement'}>
+<main class:has-overlay={hasOverlay}>
 	<header>
 		<h1>Madripoor</h1>
 		<div class="round-info">
@@ -54,6 +73,10 @@
 					Reveal Cards →
 				</button>
 			</div>
+		{:else if game.phase === 'gerrymandering'}
+			<div class="placement-bar">
+				<span class="phase-hint">{gerryHintText()}</span>
+			</div>
 		{/if}
 	</header>
 
@@ -62,7 +85,10 @@
 		placements={game.currentRound.humanPlacements}
 		results={showResults ? game.currentRound.results : undefined}
 		hasSelectedCard={game.phase === 'placement' && game.selectedCard !== null}
-		onTileClick={game.phase === 'placement' ? handleTileClick : undefined}
+		groups={game.currentRound.groups}
+		gerrySelectedTileId={game.phase === 'gerrymandering' ? game.gerrySelectedTileId : null}
+		isGerrymandering={game.phase === 'gerrymandering'}
+		onTileClick={tileClickHandler}
 	/>
 
 	{#if showHand}
@@ -70,6 +96,9 @@
 	{/if}
 
 	<PhaseOverlay />
+	{#if game.phase === 'gerrymandering'}
+		<GerrymanderingPanel />
+	{/if}
 	<RoundSummary />
 </main>
 

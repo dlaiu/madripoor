@@ -44,6 +44,33 @@
 						<span class="winner-dot" style:background={WINNER_DOT[r.winner]}></span>
 					</div>
 				{/each}
+
+				{#each game.currentRound.groupResults as gr, i (gr.groupId)}
+					<div class="group-header" class:human-win={gr.winner === 'human'} class:cpu-win={gr.winner === 'cpu'} class:tied={gr.winner === 'tie'}>
+						<span class="tile-num">G{i + 1}</span>
+						<div class="votes-col">
+							<span class="votes-you">{gr.humanTotalScore}</span>
+							<span class="vs">vs</span>
+							<span class="votes-cpu">{gr.cpuTotalScore}</span>
+							<span class="group-tiles-label">tiles {gr.tileIds.join(',')}</span>
+						</div>
+						<span class="winner-dot" style:background={WINNER_DOT[gr.winner]}></span>
+					</div>
+					{#each gr.perTile as r (r.tileId)}
+						<div class="tile-row tile-row--indent" class:human-win={gr.winner === 'human'} class:cpu-win={gr.winner === 'cpu'} class:tied={gr.winner === 'tie'}>
+							<span class="tile-num">#{r.tileId}</span>
+							<div class="votes-col">
+								<span class="votes-you" title="CHA{r.humanCard.charisma} × {r.humanRoll} = {r.humanScore}">
+									{r.humanScore}<span class="votes-detail"> ({r.humanCard.charisma}×{r.humanRoll})</span>
+								</span>
+								<span class="vs">vs</span>
+								<span class="votes-cpu" title="CHA{r.cpuCard.charisma} × {r.cpuRoll} = {r.cpuScore}">
+									{r.cpuScore}<span class="votes-detail"> ({r.cpuCard.charisma}×{r.cpuRoll})</span>
+								</span>
+							</div>
+						</div>
+					{/each}
+				{/each}
 			</div>
 
 			<footer class="summary">
@@ -182,6 +209,34 @@
 		height: 8px;
 		border-radius: 50%;
 		flex-shrink: 0;
+	}
+
+	.group-header {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 6px 14px 3px;
+		font-size: 0.78rem;
+		font-weight: 700;
+		border-top: 2px solid #e5e7eb;
+		margin-top: 2px;
+	}
+
+	.group-header.human-win { background: #f0fdf4; }
+	.group-header.cpu-win   { background: #fef2f2; }
+	.group-header.tied      { background: #f9fafb; }
+
+	.group-tiles-label {
+		font-size: 0.67rem;
+		color: #9ca3af;
+		font-weight: 400;
+		margin-left: 4px;
+	}
+
+	.tile-row--indent {
+		padding-left: 28px;
+		border-left: 3px solid #e5e7eb;
+		margin-left: 14px;
 	}
 
 	.summary {

@@ -15,6 +15,11 @@
 		isSelectable?: boolean;
 		isSwappable?: boolean;
 		result?: TileResult;
+		groupIndex?: number;
+		groupColor?: string;
+		isGerrySelected?: boolean;
+		isGerryAdjacent?: boolean;
+		isGerrymandering?: boolean;
 		onTileClick?: () => void;
 	}
 
@@ -22,7 +27,10 @@
 		id, cx, cy, size, color,
 		placedCardColor, placedCardCharisma, placedCardIsLeader = false,
 		isSelectable = false, isSwappable = false,
-		result, onTileClick
+		result,
+		groupIndex = -1, groupColor,
+		isGerrySelected = false, isGerryAdjacent = false, isGerrymandering = false,
+		onTileClick
 	}: Props = $props();
 
 	const fill = $derived(color ? TILE_COLORS[color] : DEFAULT_FILL);
@@ -47,6 +55,40 @@
 >
 	<!-- Base hex -->
 	<polygon {points} fill={fill} stroke={STROKE} stroke-width="1.5" />
+
+	<!-- Group border + badge -->
+	{#if groupIndex >= 0 && groupColor}
+		<polygon {points} fill="none" stroke={groupColor} stroke-width="3.5" opacity="0.85" />
+		<circle
+			cx={cx + size * 0.55}
+			cy={cy - size * 0.55}
+			r={size * 0.18}
+			fill={groupColor}
+		/>
+		<text
+			x={cx + size * 0.55}
+			y={cy - size * 0.55}
+			text-anchor="middle"
+			dominant-baseline="central"
+			font-size={size * 0.16}
+			font-family="sans-serif"
+			font-weight="700"
+			fill="white"
+			pointer-events="none"
+		>{groupIndex + 1}</text>
+	{/if}
+
+	<!-- Gerrymandering: anchor tile (purple fill + ring) -->
+	{#if isGerrySelected}
+		<polygon {points} fill="#7c3aed" opacity="0.12" />
+		<polygon {points} fill="none" stroke="#7c3aed" stroke-width="3" opacity="0.95" />
+	{/if}
+
+	<!-- Gerrymandering: valid adjacent targets (teal dashed ring) -->
+	{#if isGerryAdjacent && !isGerrySelected}
+		<polygon {points} fill="#0d9488" opacity="0.08" />
+		<polygon {points} fill="none" stroke="#0d9488" stroke-width="2.5" stroke-dasharray="5 3" opacity="0.85" />
+	{/if}
 
 	{#if isSelectable}
 		<!-- Empty tile + card selected: dashed blue ring -->

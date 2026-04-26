@@ -1,6 +1,6 @@
 export type CardColor = 'red' | 'blue' | 'green';
 export type PlayerKey = 'human' | 'cpu';
-export type GamePhase = 'placement' | 'revealing' | 'resolution' | 'round_end' | 'game_over';
+export type GamePhase = 'placement' | 'revealing' | 'resolution' | 'round_end' | 'gerrymandering' | 'game_over';
 
 export interface Card {
 	id: string;
@@ -8,6 +8,11 @@ export interface Card {
 	color: CardColor;
 	charisma: 1 | 2 | 3;
 	type: 'party_leader' | 'generic';
+}
+
+export interface TileGroup {
+	id: string;
+	tileIds: number[];
 }
 
 export interface TileResult {
@@ -21,10 +26,22 @@ export interface TileResult {
 	winner: PlayerKey | 'tie';
 }
 
+export interface GroupResult {
+	groupId: string;
+	tileIds: number[];
+	humanTotalScore: number;
+	cpuTotalScore: number;
+	perTile: TileResult[];
+	winner: PlayerKey | 'tie';
+}
+
 export interface RoundState {
 	roundNumber: number;
+	groups: TileGroup[];
 	humanPlacements: Record<number, Card>;
+	cpuPlacements: Record<number, Card>;
 	results: TileResult[];
+	groupResults: GroupResult[];
 	humanTilesWon: number;
 	cpuTilesWon: number;
 	winner: PlayerKey | null;
@@ -38,4 +55,5 @@ export interface GameState {
 	selectedCard: Card | null;
 	currentRound: RoundState;
 	history: RoundState[];
+	gerrySelectedTileId: number | null;
 }

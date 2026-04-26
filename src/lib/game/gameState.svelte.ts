@@ -1,15 +1,25 @@
 import { buildHand } from './deckFactory.js';
+import {
+	addTileToGroup,
+	cpuAutoGerrymander,
+	groupContaining,
+	removeTileFromGroup,
+	validateGroups
+} from './groups.js';
 import { cpuPlaceCards, resolveRound } from './resolver.js';
 import type { Card, GameState, PlayerKey, RoundState } from './types.js';
-import { TILES } from '../board/hex.js';
+import { getNeighbors, TILES } from '../board/hex.js';
 
 const TILE_IDS = TILES.map((t) => t.id);
 
 function freshRound(roundNumber: number): RoundState {
 	return {
 		roundNumber,
+		groups: [],
 		humanPlacements: {},
+		cpuPlacements: {},
 		results: [],
+		groupResults: [],
 		humanTilesWon: 0,
 		cpuTilesWon: 0,
 		winner: null
@@ -23,7 +33,8 @@ export const game: GameState = $state({
 	cpuHand: buildHand('cpu'),
 	selectedCard: null,
 	currentRound: freshRound(1),
-	history: []
+	history: [],
+	gerrySelectedTileId: null
 });
 
 export function resetGame(): void {
@@ -34,6 +45,7 @@ export function resetGame(): void {
 	game.selectedCard = null;
 	game.currentRound = freshRound(1);
 	game.history = [];
+	game.gerrySelectedTileId = null;
 }
 
 export function selectCard(card: Card): void {
@@ -72,14 +84,30 @@ export function startReveal(): void {
 
 export function resolve(): void {
 	const cpuPlacements = cpuPlaceCards(game.cpuHand, TILE_IDS);
-	const results = resolveRound(game.currentRound.humanPlacements, cpuPlacements);
+	const prev = game.history.length > 0 ? game.history[game.history.length - 1] : null;
 
-	game.currentRound.results = results;
-	game.currentRound.humanTilesWon = results.filter((r) => r.winner === 'human').length;
-	game.currentRound.cpuTilesWon = results.filter((r) => r.winner === 'cpu').length;
+	const { tileResults, groupResults } = resolveRound(
+		game.currentRound.humanPlacements,
+		cpuPlacements,
+		game.currentRound.groups,
+		prev
+	);
 
-	const roundWinner: PlayerKey =
-		game.currentRound.humanTilesWon >= game.currentRound.cpuTilesWon ? 'human' : 'cpu';
+	game.currentRound.cpuPlacements = Object.fromEntries(cpuPlacements);
+	game.currentRound.results = tileResults;
+	game.currentRound.groupResults = groupResults;
+
+	let humanTiles = tileResults.filter((r) => r.winner === 'human').length;
+	let cpuTiles = tileResults.filter((r) => r.winner === 'cpu').length;
+	for (const gr of groupResults) {
+		if (gr.winner === 'human') humanTiles += gr.tileIds.length;
+		else if (gr.winner === 'cpu') cpuTiles += gr.tileIds.length;
+	}
+
+	game.currentRound.humanTilesWon = humanTiles;
+	game.currentRound.cpuTilesWon = cpuTiles;
+
+	const roundWinner: PlayerKey = humanTiles >= cpuTiles ? 'human' : 'cpu';
 	game.currentRound.winner = roundWinner;
 	game.roundWins[roundWinner]++;
 
@@ -89,9 +117,60 @@ export function resolve(): void {
 export function startNextRound(): void {
 	game.history.push(game.currentRound);
 	const nextRoundNum = game.currentRound.roundNumber + 1;
+	const previousWinner = game.currentRound.winner;
+
 	game.humanHand = buildHand('human');
 	game.cpuHand = buildHand('cpu');
 	game.selectedCard = null;
+	game.gerrySelectedTileId = null;
 	game.currentRound = freshRound(nextRoundNum);
-	game.phase = 'placement';
+
+	if (previousWinner === 'cpu') {
+		game.currentRound.groups = cpuAutoGerrymander(nextRoundNum);
+		game.phase = 'placement';
+	} else {
+		game.phase = 'gerrymandering';
+	}
+}
+
+export function gerryClickTile(tileId: number): void {
+	const anchor = game.gerrySelectedTileId;
+
+	if (anchor === null) {
+		const inGroup = groupContaining(game.currentRound.groups, tileId);
+		if (inGroup) {
+			game.currentRound.groups = removeTileFromGroup(game.currentRound.groups, tileId);
+		} else {
+			game.gerrySelectedTileId = tileId;
+		}
+		return;
+	}
+
+	if (anchor === tileId) {
+		game.gerrySelectedTileId = null;
+		return;
+	}
+
+	const neighborIds = new Set(getNeighbors(anchor).map((n) => n.id));
+	if (neighborIds.has(tileId)) {
+		game.currentRound.groups = addTileToGroup(game.currentRound.groups, tileId, anchor);
+		game.gerrySelectedTileId = null;
+	} else {
+		game.gerrySelectedTileId = tileId;
+	}
+}
+
+export function confirmGerrymandering(): void {
+	const { valid } = validateGroups(
+		game.currentRound.groups,
+		game.currentRound.roundNumber
+	);
+	if (valid) {
+		game.phase = 'placement';
+	}
+}
+
+export function clearGroups(): void {
+	game.currentRound.groups = [];
+	game.gerrySelectedTileId = null;
 }
