@@ -57,3 +57,69 @@ export interface GameState {
 	history: RoundState[];
 	gerrySelectedTileId: number | null;
 }
+
+// ── Multiplayer types ──────────────────────────────────────────────────────────
+
+export type MultiplayerPhase =
+	| 'lobby' | 'placement' | 'revealing' | 'resolution'
+	| 'round_end' | 'gerrymandering' | 'game_over';
+
+export interface MultiplayerRoundSnapshot {
+	roundNumber: number;
+	myPlacements: Record<number, Card>;
+	opponentPlacements: Record<number, Card>;
+	groups: TileGroup[];
+	tileResults: TileResult[];
+	groupResults: GroupResult[];
+}
+
+// DB row shapes (returned from Supabase queries)
+export interface GameRow {
+	id: string;
+	room_code: string;
+	phase: MultiplayerPhase;
+	round_number: number;
+	gerry_player_id: string | null;
+	created_at: string;
+}
+
+export interface GamePlayerRow {
+	id: string;
+	game_id: string;
+	user_id: string;
+	display_name: string;
+	player_index: 0 | 1;
+	round_wins: number;
+	placed_count: number;
+	is_ready: boolean;
+	created_at: string;
+}
+
+export interface CardPlacementRow {
+	id: string;
+	game_id: string;
+	round_number: number;
+	user_id: string;
+	tile_id: number;
+	card_json: Card;
+	created_at: string;
+}
+
+export interface RoundGroupRow {
+	id: string;
+	game_id: string;
+	round_number: number;
+	group_local_id: string;
+	tile_ids: number[];
+	created_at: string;
+}
+
+export interface RoundResultRow {
+	id: string;
+	game_id: string;
+	round_number: number;
+	tile_results: TileResult[];
+	group_results: GroupResult[];
+	player_tile_wins: Record<string, number>;
+	created_at: string;
+}

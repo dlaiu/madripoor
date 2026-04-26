@@ -48,16 +48,19 @@ This milestone proves the core game loop works before touching multiplayer.
 
 ---
 
-## Milestone 4 — Multiplayer Foundation
+## ✅ Milestone 4 — Multiplayer Foundation
 **Goal:** Two players can play a full game in separate browsers.
 
-- Supabase schema: games, players, tiles, groups, card_placements, rounds
-- Supabase Auth: magic-link or display-name join via shareable room link
-- Lobby: host creates game, share link, players join, host starts
-- Realtime subscriptions: all clients stay in sync on phase transitions and game state
-- Hidden card placement: cards submitted face-down, RLS prevents opponents from reading them
-- Reveal phase: server flips all cards simultaneously, Realtime pushes to all clients
-- Test with 2 players; confirm hidden state, sync, and resolution all work
+- Supabase schema: `games`, `game_players`, `card_placements`, `round_groups`, `round_results` with RLS
+- Anonymous Supabase Auth + display name; shareable room code; `/[room_code]` route
+- Lobby: host creates game, guest joins via room code, host starts
+- Realtime subscriptions: all clients stay in sync on phase transitions (games, game_players, round_groups, round_results channels)
+- Hidden card placement: cards submitted face-down; RLS (`cp_select_opponent`) blocks reads until reveal
+- Reveal phase: host browser runs `resolveRound`, writes results; both clients update via Realtime INSERT
+- Gerrymandering: round winner regroups tiles; non-winner sees groups form live via Realtime
+- Session persistence: `localStorage` restores player into the correct game on page refresh
+- `REPLICA IDENTITY FULL` on `game_players` for reliable UPDATE Realtime delivery; guest updates own `round_wins` row via `handleResultsChange` (host RLS can't update opponent's row)
+- Solo mode preserved at `/solo`; home hub at `/`
 
 ---
 

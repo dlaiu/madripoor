@@ -1,105 +1,108 @@
 <script lang="ts">
-	import Board from '$lib/board/Board.svelte';
-	import CardHand from '$lib/components/CardHand.svelte';
-	import PhaseOverlay from '$lib/components/PhaseOverlay.svelte';
-	import GerrymanderingPanel from '$lib/components/GerrymanderingPanel.svelte';
-	import RoundSummary from '$lib/components/RoundSummary.svelte';
-	import { game, placeCard, unplaceCard, startReveal, gerryClickTile } from '$lib/game/gameState.svelte.js';
-	import type { TileColor } from '$lib/board/hex.js';
+	import { createGame, joinGame } from '$lib/db.js';
+	import { goto } from '$app/navigation';
 
-	const coloredTiles: Record<number, TileColor> = {
-		4: 'red',   11: 'red',
-		7: 'blue',  12: 'blue',
-		2: 'green',  9: 'green',
-	};
+	let mode: 'home' | 'create' | 'join' = $state('home');
+	let displayName = $state('');
+	let roomCode = $state('');
+	let loading = $state(false);
+	let error = $state('');
 
-	function handleTileClick(tileId: number) {
-		if (game.selectedCard) {
-			placeCard(tileId);
-		} else if (tileId in game.currentRound.humanPlacements) {
-			unplaceCard(tileId);
+	async function handleCreate() {
+		if (!displayName.trim()) { error = 'Enter a display name'; return; }
+		loading = true; error = '';
+		try {
+			const result = await createGame(displayName.trim());
+			localStorage.setItem('madripoor_session', JSON.stringify({
+				gameId: result.gameId,
+				roomCode: result.roomCode,
+				myUserId: result.myUserId,
+				myPlayerId: result.myPlayerId,
+				myPlayerIndex: 0,
+				displayName: displayName.trim()
+			}));
+			goto(`/${result.roomCode}`);
+		} catch (e) {
+			error = 'Failed to create game. Try again.';
+			loading = false;
 		}
 	}
 
-	function handleGerryTileClick(tileId: number) {
-		gerryClickTile(tileId);
-	}
-
-	const allPlaced = $derived(game.phase === 'placement' && game.humanHand.length === 0);
-	const showHand = $derived(game.phase === 'placement');
-	const showResults = $derived(
-		game.phase === 'resolution' ||
-		game.phase === 'round_end' ||
-		game.phase === 'game_over'
-	);
-	const hasOverlay = $derived(game.phase !== 'placement');
-
-	const hintText = $derived(() => {
-		if (game.selectedCard) return 'Click a tile to place — or click a placed tile to swap';
-		if (allPlaced) return 'All cards placed — confirm when ready';
-		return 'Select a card from your hand';
-	});
-
-	const gerryHintText = $derived(() => {
-		if (game.gerrySelectedTileId !== null) {
-			return `Tile ${game.gerrySelectedTileId} selected — click an adjacent tile to group`;
+	async function handleJoin() {
+		if (!displayName.trim()) { error = 'Enter a display name'; return; }
+		if (!roomCode.trim()) { error = 'Enter a room code'; return; }
+		loading = true; error = '';
+		const result = await joinGame(roomCode.trim().toUpperCase(), displayName.trim());
+		if ('error' in result) {
+			error = result.error;
+			loading = false;
+			return;
 		}
-		return 'Click a tile to start grouping, or click a grouped tile to ungroup it';
-	});
-
-	const tileClickHandler = $derived(
-		game.phase === 'placement' ? handleTileClick :
-		game.phase === 'gerrymandering' ? handleGerryTileClick :
-		undefined
-	);
+		localStorage.setItem('madripoor_session', JSON.stringify({
+			gameId: result.gameId,
+			roomCode: roomCode.trim().toUpperCase(),
+			myUserId: result.myUserId,
+			myPlayerId: result.myPlayerId,
+			myPlayerIndex: 1,
+			displayName: displayName.trim()
+		}));
+		goto(`/${roomCode.trim().toUpperCase()}`);
+	}
 </script>
 
-<main class:has-overlay={hasOverlay}>
-	<header>
-		<h1>Madripoor</h1>
-		<div class="round-info">
-			Round {game.currentRound.roundNumber}
-			&nbsp;·&nbsp;
-			You <strong>{game.roundWins.human}</strong> — <strong>{game.roundWins.cpu}</strong> CPU
+<main>
+	<h1>Madripoor</h1>
+
+	{#if mode === 'home'}
+		<div class="menu">
+			<button onclick={() => { mode = 'create'; error = ''; }}>Create Game</button>
+			<button onclick={() => { mode = 'join'; error = ''; }}>Join Game</button>
+			<a href="/solo" class="solo-link">Play vs CPU</a>
 		</div>
-		{#if game.phase === 'placement'}
-			<div class="placement-bar">
-				<span class="phase-hint">{hintText()}</span>
-				<button
-					class="confirm-btn"
-					disabled={!allPlaced}
-					onclick={startReveal}
-				>
-					Reveal Cards →
+	{:else if mode === 'create'}
+		<div class="form">
+			<h2>Create Game</h2>
+			<input
+				type="text"
+				placeholder="Your name"
+				bind:value={displayName}
+				maxlength={20}
+				onkeydown={(e) => e.key === 'Enter' && handleCreate()}
+			/>
+			{#if error}<p class="error">{error}</p>{/if}
+			<div class="form-actions">
+				<button onclick={handleCreate} disabled={loading}>
+					{loading ? 'Creating…' : 'Create →'}
 				</button>
+				<button class="back" onclick={() => { mode = 'home'; error = ''; }}>Back</button>
 			</div>
-		{:else if game.phase === 'gerrymandering'}
-			<div class="placement-bar">
-				<span class="phase-hint">{gerryHintText()}</span>
+		</div>
+	{:else}
+		<div class="form">
+			<h2>Join Game</h2>
+			<input
+				type="text"
+				placeholder="Room code"
+				bind:value={roomCode}
+				maxlength={6}
+				style="text-transform: uppercase; letter-spacing: 0.15em"
+			/>
+			<input
+				type="text"
+				placeholder="Your name"
+				bind:value={displayName}
+				maxlength={20}
+				onkeydown={(e) => e.key === 'Enter' && handleJoin()}
+			/>
+			{#if error}<p class="error">{error}</p>{/if}
+			<div class="form-actions">
+				<button onclick={handleJoin} disabled={loading}>
+					{loading ? 'Joining…' : 'Join →'}
+				</button>
+				<button class="back" onclick={() => { mode = 'home'; error = ''; }}>Back</button>
 			</div>
-		{/if}
-	</header>
-
-	<Board
-		{coloredTiles}
-		placements={game.currentRound.humanPlacements}
-		results={showResults ? game.currentRound.results : undefined}
-		hasSelectedCard={game.phase === 'placement' && game.selectedCard !== null}
-		groups={game.currentRound.groups}
-		gerrySelectedTileId={game.phase === 'gerrymandering' ? game.gerrySelectedTileId : null}
-		isGerrymandering={game.phase === 'gerrymandering'}
-		onTileClick={tileClickHandler}
-	/>
-
-	{#if showHand}
-		<CardHand />
+		</div>
 	{/if}
-
-	<PhaseOverlay />
-	{#if game.phase === 'gerrymandering'}
-		<GerrymanderingPanel />
-	{/if}
-	<RoundSummary />
 </main>
 
 <style>
@@ -107,68 +110,123 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		padding: 1.5rem 2rem 120px;
-		font-family: sans-serif;
+		justify-content: center;
 		min-height: 100vh;
-	}
-
-	main.has-overlay {
-		padding-right: 280px;
-	}
-
-	header {
-		width: 100%;
-		max-width: 600px;
-		margin-bottom: 1rem;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 6px;
+		font-family: sans-serif;
+		gap: 2rem;
 	}
 
 	h1 {
+		font-size: 2.5rem;
 		margin: 0;
-		font-size: 1.5rem;
-		letter-spacing: 0.05em;
+		letter-spacing: 0.08em;
 	}
 
-	.round-info {
-		font-size: 0.85rem;
-		color: #6b7280;
+	h2 {
+		margin: 0 0 1rem;
+		font-size: 1.2rem;
 	}
 
-	.placement-bar {
+	.menu {
 		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
 		align-items: center;
-		gap: 12px;
-		flex-wrap: wrap;
-		justify-content: center;
 	}
 
-	.phase-hint {
-		font-size: 0.8rem;
-		color: #4b5563;
+	.menu button, .menu .solo-link {
+		width: 200px;
+		padding: 12px 0;
+		font-size: 1rem;
+		font-weight: 600;
+		border-radius: 8px;
+		cursor: pointer;
+		text-align: center;
+		text-decoration: none;
 	}
 
-	.confirm-btn {
-		padding: 6px 16px;
-		background: #16a34a;
+	.menu button {
+		background: #1d4ed8;
 		color: white;
 		border: none;
-		border-radius: 6px;
-		font-size: 0.85rem;
-		font-weight: 600;
-		cursor: pointer;
-		transition: background 0.15s, opacity 0.15s;
 	}
 
-	.confirm-btn:disabled {
-		background: #d1d5db;
-		color: #9ca3af;
+	.menu button:hover {
+		background: #1e40af;
+	}
+
+	.menu .solo-link {
+		background: transparent;
+		color: #6b7280;
+		border: 1.5px solid #d1d5db;
+		display: block;
+	}
+
+	.menu .solo-link:hover {
+		border-color: #9ca3af;
+		color: #374151;
+	}
+
+	.form {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+		width: 280px;
+	}
+
+	input {
+		padding: 10px 12px;
+		border: 1.5px solid #d1d5db;
+		border-radius: 6px;
+		font-size: 1rem;
+		outline: none;
+	}
+
+	input:focus {
+		border-color: #1d4ed8;
+	}
+
+	.form-actions {
+		display: flex;
+		gap: 0.5rem;
+	}
+
+	.form-actions button {
+		flex: 1;
+		padding: 10px 0;
+		font-size: 0.95rem;
+		font-weight: 600;
+		border-radius: 6px;
+		cursor: pointer;
+		border: none;
+	}
+
+	.form-actions button:first-child {
+		background: #1d4ed8;
+		color: white;
+	}
+
+	.form-actions button:first-child:disabled {
+		background: #93c5fd;
 		cursor: not-allowed;
 	}
 
-	.confirm-btn:not(:disabled):hover {
-		background: #15803d;
+	.form-actions button:first-child:not(:disabled):hover {
+		background: #1e40af;
+	}
+
+	.form-actions button.back {
+		background: #f3f4f6;
+		color: #374151;
+	}
+
+	.form-actions button.back:hover {
+		background: #e5e7eb;
+	}
+
+	.error {
+		margin: 0;
+		font-size: 0.85rem;
+		color: #dc2626;
 	}
 </style>
