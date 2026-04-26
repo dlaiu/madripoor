@@ -28,7 +28,7 @@ This milestone proves the core game loop works before touching multiplayer.
 
 ---
 
-## Milestone 3 — Grouped Tiles & Gerrymandering
+## ✅ Milestone 3 — Grouped Tiles & Gerrymandering
 **Goal:** Groups work correctly and the round winner can regroup tiles.
 
 - Group rendering: tiles in a group visually connected, share a single score
@@ -39,7 +39,7 @@ This milestone proves the core game loop works before touching multiplayer.
 
 ---
 
-## Milestone 3.5 — Supabase Client Setup
+## ✅ Milestone 3.5 — Supabase Client Setup
 **Goal:** Wire up Supabase before multiplayer work begins.
 
 - Create Supabase project, add `@supabase/supabase-js`
