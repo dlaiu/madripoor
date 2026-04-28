@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { mp, isHost, advanceToNextRound, clearSession } from '$lib/game/multiplayerStore.svelte.js';
+	import { mp, isHost, myRoundWins, myState, otherPlayers, advanceToNextRound, clearSession } from '$lib/game/multiplayerStore.svelte.js';
 
 	const show = $derived(
 		mp.phase === 'revealing' ||
@@ -15,26 +15,59 @@
 		mp.phase === 'game_over'
 	);
 
-	// Host is always 'human' in tileResults; guest is always 'cpu'
-	const mySide = $derived(mp.myPlayerIndex === 0 ? 'human' : 'cpu');
-	const oppSide = $derived(mp.myPlayerIndex === 0 ? 'cpu' : 'human');
+	// Tile wins per userId derived from results
+	const playerTileWins = $derived.by(() => {
+		const wins: Record<string, number> = {};
+		for (const tr of mp.tileResults) {
+			wins[tr.winner] = (wins[tr.winner] ?? 0) + 1;
+		}
+		for (const gr of mp.groupResults) {
+			wins[gr.winner] = (wins[gr.winner] ?? 0) + gr.tileIds.length;
+		}
+		return wins;
+	});
 
-	function winnerColor(winner: string): string {
-		if (winner === mySide) return '#16a34a';
-		if (winner === oppSide) return '#dc2626';
-		return '#9ca3af';
-	}
+	const myTilesWon = $derived(playerTileWins[mp.myUserId ?? ''] ?? 0);
 
-	const myTilesWon = $derived(
-		mp.tileResults.filter((r) => r.winner === mySide).length +
-		mp.groupResults.filter((r) => r.winner === mySide).reduce((s, r) => s + r.tileIds.length, 0)
+	// Round winner: player with most tiles (tiebreak: lowest player_index)
+	const roundWinnerId = $derived.by(() => {
+		let winnerId = '';
+		let winCount = -1;
+		let winIndex = Infinity;
+		for (const [uid, count] of Object.entries(playerTileWins)) {
+			const p = mp.players.find((pl) => pl.userId === uid);
+			const idx = p?.playerIndex ?? Infinity;
+			if (count > winCount || (count === winCount && idx < winIndex)) {
+				winnerId = uid;
+				winCount = count;
+				winIndex = idx;
+			}
+		}
+		return winnerId;
+	});
+
+	const iWonRound = $derived(roundWinnerId === mp.myUserId);
+	const roundWinnerName = $derived(
+		iWonRound ? (myState()?.displayName ?? 'You') : (mp.players.find(p => p.userId === roundWinnerId)?.displayName ?? 'Opponent')
 	);
-	const oppTilesWon = $derived(
-		mp.tileResults.filter((r) => r.winner === oppSide).length +
-		mp.groupResults.filter((r) => r.winner === oppSide).reduce((s, r) => s + r.tileIds.length, 0)
-	);
-	const roundWinner = $derived(myTilesWon >= oppTilesWon ? 'you' : 'opponent');
+
 	const isGameOver = $derived(mp.phase === 'game_over');
+
+	// Game winner: first to 3 round wins
+	const gameWinnerId = $derived(mp.players.find(p => p.roundWins >= 3)?.userId ?? null);
+	const gameWinnerName = $derived(
+		gameWinnerId === mp.myUserId
+			? (myState()?.displayName ?? 'You')
+			: (mp.players.find(p => p.userId === gameWinnerId)?.displayName ?? 'Opponent')
+	);
+
+	function scoreColor(userId: string): string {
+		if (userId === mp.myUserId) return '#16a34a';
+		const colors = ['#dc2626', '#7c3aed', '#d97706'];
+		const others = otherPlayers();
+		const idx = others.findIndex(p => p.userId === userId);
+		return colors[idx % colors.length];
+	}
 
 	async function handleNextRound() {
 		await advanceToNextRound();
@@ -55,43 +88,49 @@
 
 			<div class="tile-list">
 				{#each mp.tileResults as r (r.tileId)}
-					<div class="tile-row" class:my-win={r.winner === mySide} class:opp-win={r.winner === oppSide} class:tied={r.winner === 'tie'}>
+					{@const isMine = r.winner === mp.myUserId}
+					<div class="tile-row" class:my-win={isMine} class:opp-win={!isMine}>
 						<span class="tile-num">#{r.tileId}</span>
-						<div class="votes-col">
-							<span class="votes-you" title="CHA{r.humanCard.charisma} × {r.humanRoll} = {r.humanScore}">
-								{r.humanScore}<span class="votes-detail"> ({r.humanCard.charisma}×{r.humanRoll})</span>
-							</span>
-							<span class="vs">vs</span>
-							<span class="votes-cpu" title="CHA{r.cpuCard.charisma} × {r.cpuRoll} = {r.cpuScore}">
-								{r.cpuScore}<span class="votes-detail"> ({r.cpuCard.charisma}×{r.cpuRoll})</span>
-							</span>
+						<div class="scores-col">
+							{#each mp.players as player}
+								{@const s = r.scores[player.userId]}
+								{#if s}
+									<span class="score-entry" style:color={scoreColor(player.userId)}>
+										{s.score}<span class="score-detail"> ({s.card.charisma}×{s.roll})</span>
+									</span>
+								{/if}
+							{/each}
 						</div>
-						<span class="winner-dot" style:background={winnerColor(r.winner)}></span>
+						<span class="winner-dot" style:background={scoreColor(r.winner)}></span>
 					</div>
 				{/each}
 
 				{#each mp.groupResults as gr, i (gr.groupId)}
-					<div class="group-header" class:my-win={gr.winner === mySide} class:opp-win={gr.winner === oppSide} class:tied={gr.winner === 'tie'}>
+					{@const isMine = gr.winner === mp.myUserId}
+					<div class="group-header" class:my-win={isMine} class:opp-win={!isMine}>
 						<span class="tile-num">G{i + 1}</span>
-						<div class="votes-col">
-							<span class="votes-you">{gr.humanTotalScore}</span>
-							<span class="vs">vs</span>
-							<span class="votes-cpu">{gr.cpuTotalScore}</span>
+						<div class="scores-col">
+							{#each mp.players as player}
+								{@const total = gr.totals[player.userId] ?? 0}
+								<span class="score-entry" style:color={scoreColor(player.userId)}>{total}</span>
+							{/each}
 							<span class="group-tiles-label">tiles {gr.tileIds.join(',')}</span>
 						</div>
-						<span class="winner-dot" style:background={winnerColor(gr.winner)}></span>
+						<span class="winner-dot" style:background={scoreColor(gr.winner)}></span>
 					</div>
 					{#each gr.perTile as r (r.tileId)}
-						<div class="tile-row tile-row--indent" class:my-win={gr.winner === mySide} class:opp-win={gr.winner === oppSide} class:tied={gr.winner === 'tie'}>
+						{@const isMine = r.winner === mp.myUserId}
+						<div class="tile-row tile-row--indent" class:my-win={isMine} class:opp-win={!isMine}>
 							<span class="tile-num">#{r.tileId}</span>
-							<div class="votes-col">
-								<span class="votes-you" title="CHA{r.humanCard.charisma} × {r.humanRoll} = {r.humanScore}">
-									{r.humanScore}<span class="votes-detail"> ({r.humanCard.charisma}×{r.humanRoll})</span>
-								</span>
-								<span class="vs">vs</span>
-								<span class="votes-cpu" title="CHA{r.cpuCard.charisma} × {r.cpuRoll} = {r.cpuScore}">
-									{r.cpuScore}<span class="votes-detail"> ({r.cpuCard.charisma}×{r.cpuRoll})</span>
-								</span>
+							<div class="scores-col">
+								{#each mp.players as player}
+									{@const s = r.scores[player.userId]}
+									{#if s}
+										<span class="score-entry" style:color={scoreColor(player.userId)}>
+											{s.score}<span class="score-detail"> ({s.card.charisma}×{s.roll})</span>
+										</span>
+									{/if}
+								{/each}
 							</div>
 						</div>
 					{/each}
@@ -100,41 +139,36 @@
 
 			<footer class="summary">
 				<div class="tile-counts">
-					<span class="count-you">
-						{mp.myDisplayName || 'You'}: <strong>{myTilesWon} tiles</strong>
-					</span>
-					<span class="count-opp">
-						{mp.opponentDisplayName || 'Opp'}: <strong>{oppTilesWon} tiles</strong>
-					</span>
+					{#each mp.players as player}
+						<span class="count-player" style:color={scoreColor(player.userId)}>
+							{player.displayName}: <strong>{playerTileWins[player.userId] ?? 0}</strong>
+						</span>
+					{/each}
 				</div>
 
 				{#if mp.phase === 'resolution' || mp.phase === 'round_end' || mp.phase === 'game_over'}
 					<div class="round-winner-msg">
-						{#if roundWinner === 'you'}
+						{#if iWonRound}
 							<span class="msg-win">You won the round!</span>
 						{:else}
-							<span class="msg-lose">{mp.opponentDisplayName || 'Opponent'} won the round.</span>
+							<span class="msg-lose">{roundWinnerName} won the round.</span>
 						{/if}
 					</div>
 
 					<div class="win-tally">
-						<div class="tally-item tally-you">
-							<strong>{mp.roundWins.my}</strong>
-							<span>{mp.myDisplayName || 'You'}</span>
-						</div>
-						<span class="tally-sep">wins</span>
-						<div class="tally-item tally-opp">
-							<strong>{mp.roundWins.opponent}</strong>
-							<span>{mp.opponentDisplayName || 'Opp'}</span>
-						</div>
+						{#each mp.players as player, i}
+							<div class="tally-item" style:color={scoreColor(player.userId)}>
+								<strong>{player.roundWins}</strong>
+								<span>{player.displayName}</span>
+							</div>
+							{#if i < mp.players.length - 1}
+								<span class="tally-sep">wins</span>
+							{/if}
+						{/each}
 					</div>
 
 					{#if isGameOver}
-						<p class="game-over-msg">
-							{mp.roundWins.my >= 3
-								? `${mp.myDisplayName || 'You'} win!`
-								: `${mp.opponentDisplayName || 'Opponent'} wins!`}
-						</p>
+						<p class="game-over-msg">{gameWinnerName} wins!</p>
 						<button class="action-btn" onclick={handleNewGame}>New Game</button>
 					{:else if isHost()}
 						<button class="action-btn" onclick={handleNextRound}>Next Round →</button>
@@ -198,7 +232,6 @@
 
 	.tile-row.my-win  { background: #f0fdf4; }
 	.tile-row.opp-win { background: #fef2f2; }
-	.tile-row.tied    { background: #f9fafb; }
 
 	.tile-num {
 		width: 28px;
@@ -207,34 +240,23 @@
 		flex-shrink: 0;
 	}
 
-	.votes-col {
+	.scores-col {
 		flex: 1;
 		display: flex;
 		align-items: center;
-		gap: 4px;
+		gap: 6px;
+		flex-wrap: wrap;
 	}
 
-	.votes-you {
-		color: #16a34a;
+	.score-entry {
 		font-weight: 700;
 		font-size: 0.85rem;
 	}
 
-	.votes-cpu {
-		color: #dc2626;
-		font-weight: 700;
-		font-size: 0.85rem;
-	}
-
-	.votes-detail {
+	.score-detail {
 		font-weight: 400;
 		font-size: 0.7rem;
 		color: #9ca3af;
-	}
-
-	.vs {
-		color: #d1d5db;
-		font-size: 0.7rem;
 	}
 
 	.winner-dot {
@@ -257,7 +279,6 @@
 
 	.group-header.my-win  { background: #f0fdf4; }
 	.group-header.opp-win { background: #fef2f2; }
-	.group-header.tied    { background: #f9fafb; }
 
 	.group-tiles-label {
 		font-size: 0.67rem;
@@ -282,13 +303,12 @@
 
 	.tile-counts {
 		display: flex;
-		justify-content: space-between;
+		flex-wrap: wrap;
+		gap: 6px;
 		font-size: 0.82rem;
-		color: #374151;
 	}
 
-	.count-you strong { color: #16a34a; }
-	.count-opp strong { color: #dc2626; }
+	.count-player strong { font-weight: 700; }
 
 	.round-winner-msg {
 		text-align: center;
@@ -303,8 +323,9 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		gap: 12px;
+		gap: 10px;
 		padding: 8px 0;
+		flex-wrap: wrap;
 	}
 
 	.tally-item {
@@ -315,7 +336,7 @@
 	}
 
 	.tally-item strong {
-		font-size: 1.6rem;
+		font-size: 1.4rem;
 		line-height: 1;
 	}
 
@@ -323,9 +344,6 @@
 		font-size: 0.7rem;
 		color: #9ca3af;
 	}
-
-	.tally-you strong { color: #16a34a; }
-	.tally-opp strong { color: #dc2626; }
 
 	.tally-sep {
 		font-size: 0.7rem;

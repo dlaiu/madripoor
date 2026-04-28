@@ -5,6 +5,7 @@
 	let mode: 'home' | 'create' | 'join' = $state('home');
 	let displayName = $state('');
 	let roomCode = $state('');
+	let maxPlayers = $state<2 | 3 | 4>(2);
 	let loading = $state(false);
 	let error = $state('');
 
@@ -12,7 +13,7 @@
 		if (!displayName.trim()) { error = 'Enter a display name'; return; }
 		loading = true; error = '';
 		try {
-			const result = await createGame(displayName.trim());
+			const result = await createGame(displayName.trim(), maxPlayers);
 			localStorage.setItem('madripoor_session', JSON.stringify({
 				gameId: result.gameId,
 				roomCode: result.roomCode,
@@ -43,7 +44,7 @@
 			roomCode: roomCode.trim().toUpperCase(),
 			myUserId: result.myUserId,
 			myPlayerId: result.myPlayerId,
-			myPlayerIndex: 1,
+			myPlayerIndex: result.myPlayerIndex,
 			displayName: displayName.trim()
 		}));
 		goto(`/${roomCode.trim().toUpperCase()}`);
@@ -69,6 +70,18 @@
 				maxlength={20}
 				onkeydown={(e) => e.key === 'Enter' && handleCreate()}
 			/>
+			<div class="player-count">
+				<span>Players</span>
+				<div class="count-buttons">
+					{#each [2, 3, 4] as n}
+						<button
+							class="count-btn"
+							class:active={maxPlayers === n}
+							onclick={() => (maxPlayers = n as 2 | 3 | 4)}
+						>{n}</button>
+					{/each}
+				</div>
+			</div>
 			{#if error}<p class="error">{error}</p>{/if}
 			<div class="form-actions">
 				<button onclick={handleCreate} disabled={loading}>
@@ -222,6 +235,37 @@
 
 	.form-actions button.back:hover {
 		background: #e5e7eb;
+	}
+
+	.player-count {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		font-size: 0.9rem;
+		color: #374151;
+	}
+
+	.count-buttons {
+		display: flex;
+		gap: 0.35rem;
+	}
+
+	.count-btn {
+		width: 36px;
+		height: 36px;
+		border-radius: 6px;
+		border: 1.5px solid #d1d5db;
+		background: white;
+		font-size: 0.95rem;
+		font-weight: 600;
+		cursor: pointer;
+		color: #374151;
+	}
+
+	.count-btn.active {
+		border-color: #1d4ed8;
+		background: #1d4ed8;
+		color: white;
 	}
 
 	.error {

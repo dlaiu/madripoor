@@ -115,6 +115,7 @@ export function resolve(): void {
 }
 
 export function startNextRound(): void {
+	const prevGroups = game.currentRound.groups.map((g) => ({ ...g, tileIds: [...g.tileIds] }));
 	game.history.push(game.currentRound);
 	const nextRoundNum = game.currentRound.roundNumber + 1;
 	const previousWinner = game.currentRound.winner;
@@ -129,6 +130,8 @@ export function startNextRound(): void {
 		game.currentRound.groups = cpuAutoGerrymander(nextRoundNum);
 		game.phase = 'placement';
 	} else {
+		// Human gerrymanders — start from the previous round's groups so they can modify them
+		game.currentRound.groups = prevGroups;
 		game.phase = 'gerrymandering';
 	}
 }

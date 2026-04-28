@@ -64,24 +64,34 @@ This milestone proves the core game loop works before touching multiplayer.
 
 ---
 
-## Milestone 5 — Full 2–4 Player Support & Card Buying
+## ✅ Milestone 5 — Full 2–4 Player Support & Card Buying
 **Goal:** Complete game playable with friends.
 
-- Scale to 3–4 players (deck scaling, turn order logic)
-- Card buying phase: replenishing store UI, worst-to-best turn order, swap mechanic
-- Hand management: discard selected card, receive store card, hand stays at 15
-- Entrenchment: player can mark a card as entrenched during placement, +2 bonus resolved server-side
-- End-to-end playtest with real people
+- DB schema extended: `max_players`, `draw_pile_json`, `card_store_json`, `buying_turn_player_id`, `hand_json`, `swaps_used`, `swap_request` columns
+- Lobby generalised to 2–4 players; host selects player count at creation
+- N-player state: replaced binary `human`/`cpu` with `players: PlayerState[]` throughout the store
+- N-player resolver (`resolveRoundMP`): per-player scores, multi-way tie re-roll, group entrenchment; solo resolver untouched
+- Shared draw pile (18 cards, seeded at game creation, shuffled): Party Leaders, Hometown CHA3, Independent, Mr. Popular, Disadvantage, Coalition, Underdog
+- Card buying phase: sequential worst→best turn order; last-place gets 2 swaps, all others get 1; 4-card replenishing store; discarded cards recycled to bottom of draw pile
+- Hand persistence: each player's `hand_json` written to DB; card bought in round N appears in round N+1
+- Entrenchment: +2 per player for solo tiles (same card, same tile from prior round); +2 per player per group (capped at once regardless of how many cards entrenched in the group); applies in both solo and multiplayer resolvers
+- Fixed solo gerrymandering: board now pre-populated with previous round's groups when human wins
+- 66 unit tests passing
+
+**Deferred to later milestones:**
+- Solo card buying → M6 (will be designed alongside card abilities, which interact with the store)
+- Entrenchment UI hints (showing previous-round placements during placement phase) → M7 polish
 
 ---
 
-## Milestone 6 — Card Abilities
-**Goal:** All special cards work correctly.
+## Milestone 6 — Card Abilities & Solo Card Buying
+**Goal:** All special cards work correctly; solo mode reaches feature parity with multiplayer.
 
 - Party Leader, Hometown (CHA1/2/3), Pollster, Scout, Hard Worker (starting deck abilities)
 - Mr. Popular, Independent, Coalition, Underdog, Disadvantage (draw pile abilities)
 - Ability resolution order defined and enforced server-side
 - Visual feedback when an ability triggers
+- Solo card buying: draw pile + store UI for single-player mode; CPU buying logic
 
 Deliberately deferred because abilities are the most bug-prone part and the core loop needs to be solid first.
 
@@ -93,6 +103,7 @@ Deliberately deferred because abilities are the most bug-prone part and the core
 - Phase indicator with clear player prompts ("Waiting for 2 players to place cards…")
 - Animated reveal, dice roll animations
 - Score breakdown visible after each tile resolves
+- Entrenchment UI hints: show previous-round placements during placement so players can identify entrenched cards
 - Mobile-friendly layout (people will want to play on phones)
 - Basic error states (disconnected player, page refresh recovery)
 

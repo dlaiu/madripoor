@@ -1,10 +1,13 @@
 import { supabase } from './supabase.js';
+import { buildDrawPile, shuffleCards } from './game/deckFactory.js';
 import type {
 	Card,
 	CardPlacementRow,
 	GamePlayerRow,
 	GameRow,
 	GroupResult,
+	MPGroupResult,
+	MPTileResult,
 	RoundGroupRow,
 	RoundResultRow,
 	TileGroup,
@@ -27,11 +30,14 @@ function unwrap<T>(result: { data: T | null; error: unknown }): T {
 // ── Auth + Game Creation ───────────────────────────────────────────────────────
 
 export async function createGame(
-	displayName: string
+	displayName: string,
+	maxPlayers: 2 | 3 | 4 = 2
 ): Promise<{ gameId: string; roomCode: string; myUserId: string; myPlayerId: string }> {
 	const { data: authData, error: authErr } = await supabase.auth.signInAnonymously();
 	if (authErr || !authData.user) throw authErr ?? new Error('Auth failed');
 	const myUserId = authData.user.id;
+
+	const drawPile = shuffleCards(buildDrawPile());
 
 	// Retry on room code collision (UNIQUE constraint)
 	let gameId: string | undefined;
@@ -40,7 +46,13 @@ export async function createGame(
 		roomCode = generateRoomCode();
 		const res = await supabase
 			.from('games')
-			.insert({ room_code: roomCode, phase: 'lobby', round_number: 1 })
+			.insert({
+				room_code: roomCode,
+				phase: 'lobby',
+				round_number: 1,
+				max_players: maxPlayers,
+				draw_pile_json: drawPile
+			})
 			.select('id')
 			.single();
 		if (!res.error) {
@@ -64,19 +76,20 @@ export async function createGame(
 export async function joinGame(
 	roomCode: string,
 	displayName: string
-): Promise<{ gameId: string; myUserId: string; myPlayerId: string } | { error: string }> {
+): Promise<{ gameId: string; myUserId: string; myPlayerId: string; myPlayerIndex: number } | { error: string }> {
 	const { data: authData, error: authErr } = await supabase.auth.signInAnonymously();
 	if (authErr || !authData.user) return { error: 'Auth failed' };
 	const myUserId = authData.user.id;
 
 	const gameRes = await supabase
 		.from('games')
-		.select('id, phase')
+		.select('id, phase, max_players')
 		.eq('room_code', roomCode.toUpperCase())
 		.single();
 	if (gameRes.error || !gameRes.data) return { error: 'Room not found' };
 	if (gameRes.data.phase !== 'lobby') return { error: 'Game already started' };
 	const gameId = gameRes.data.id;
+	const maxPlayers = gameRes.data.max_players ?? 2;
 
 	const existingPlayers = await supabase
 		.from('game_players')
@@ -89,24 +102,29 @@ export async function joinGame(
 	if (existing) {
 		const playerRes = await supabase
 			.from('game_players')
-			.select('id')
+			.select('id, player_index')
 			.eq('game_id', gameId)
 			.eq('user_id', myUserId)
 			.single();
 		if (playerRes.error) return { error: 'Failed to rejoin' };
-		return { gameId, myUserId, myPlayerId: playerRes.data.id };
+		return { gameId, myUserId, myPlayerId: playerRes.data.id, myPlayerIndex: playerRes.data.player_index };
 	}
 
-	if (existingPlayers.data.length >= 2) return { error: 'Game is full' };
+	if (existingPlayers.data.length >= maxPlayers) return { error: 'Game is full' };
+
+	// Assign next available player_index
+	const usedIndices = new Set(existingPlayers.data.map((p) => p.player_index));
+	let nextIndex = 0;
+	while (usedIndices.has(nextIndex)) nextIndex++;
 
 	const playerRes = await supabase
 		.from('game_players')
-		.insert({ game_id: gameId, user_id: myUserId, display_name: displayName, player_index: 1 })
+		.insert({ game_id: gameId, user_id: myUserId, display_name: displayName, player_index: nextIndex })
 		.select('id')
 		.single();
 	if (playerRes.error) return { error: 'Failed to join game' };
 
-	return { gameId, myUserId, myPlayerId: playerRes.data.id };
+	return { gameId, myUserId, myPlayerId: playerRes.data.id, myPlayerIndex: nextIndex };
 }
 
 // ── Game Queries ───────────────────────────────────────────────────────────────
@@ -215,7 +233,7 @@ export async function resetReadyStatus(gameId: string): Promise<void> {
 	unwrap(
 		await supabase
 			.from('game_players')
-			.update({ is_ready: false, placed_count: 0 })
+			.update({ is_ready: false, placed_count: 0, swaps_used: 0, swap_request: null })
 			.eq('game_id', gameId)
 			.eq('user_id', userId)
 	);
@@ -233,13 +251,26 @@ export async function getCardPlacements(
 	return unwrap(res) as CardPlacementRow[];
 }
 
+// ── Hand persistence ──────────────────────────────────────────────────────────
+
+export async function saveHand(gameId: string, hand: Card[]): Promise<void> {
+	const userId = (await supabase.auth.getUser()).data.user!.id;
+	unwrap(
+		await supabase
+			.from('game_players')
+			.update({ hand_json: hand })
+			.eq('game_id', gameId)
+			.eq('user_id', userId)
+	);
+}
+
 // ── Resolution ────────────────────────────────────────────────────────────────
 
 export async function writeRoundResults(
 	gameId: string,
 	roundNumber: number,
-	tileResults: TileResult[],
-	groupResults: GroupResult[],
+	tileResults: MPTileResult[],
+	groupResults: MPGroupResult[],
 	playerTileWins: Record<string, number>
 ): Promise<void> {
 	unwrap(
@@ -322,4 +353,118 @@ export async function getGroupsForRound(
 		.eq('game_id', gameId)
 		.eq('round_number', roundNumber);
 	return unwrap(res) as RoundGroupRow[];
+}
+
+// ── Card buying ───────────────────────────────────────────────────────────────
+
+export async function initCardBuyingPhase(
+	gameId: string,
+	firstBuyerUserId: string,
+	storeCards: (Card | null)[],
+	drawPile: Card[]
+): Promise<void> {
+	unwrap(
+		await supabase
+			.from('games')
+			.update({
+				phase: 'card_buying',
+				buying_turn_player_id: firstBuyerUserId,
+				card_store_json: storeCards,
+				draw_pile_json: drawPile
+			})
+			.eq('id', gameId)
+	);
+}
+
+export async function advanceToCardBuying(
+	gameId: string,
+	gerryUserId: string,
+	firstBuyerUserId: string,
+	storeCards: (Card | null)[],
+	drawPile: Card[]
+): Promise<void> {
+	unwrap(
+		await supabase
+			.from('games')
+			.update({
+				phase: 'card_buying',
+				gerry_player_id: gerryUserId,
+				buying_turn_player_id: firstBuyerUserId,
+				card_store_json: storeCards,
+				draw_pile_json: drawPile
+			})
+			.eq('id', gameId)
+	);
+}
+
+export async function replenishStoreSlot(
+	gameId: string,
+	newStore: (Card | null)[],
+	newDrawPile: Card[]
+): Promise<void> {
+	unwrap(
+		await supabase
+			.from('games')
+			.update({ card_store_json: newStore, draw_pile_json: newDrawPile })
+			.eq('id', gameId)
+	);
+}
+
+export async function advanceBuyingTurn(gameId: string, nextUserId: string): Promise<void> {
+	unwrap(
+		await supabase
+			.from('games')
+			.update({ buying_turn_player_id: nextUserId })
+			.eq('id', gameId)
+	);
+}
+
+export async function submitBuyAction(
+	gameId: string,
+	newHand: Card[],
+	storePosition: number,
+	discardedCardId: string,
+	discardedCard: Card
+): Promise<void> {
+	const userId = (await supabase.auth.getUser()).data.user!.id;
+	const row = await supabase
+		.from('game_players')
+		.select('swaps_used')
+		.eq('game_id', gameId)
+		.eq('user_id', userId)
+		.single();
+	const swapsUsed = (row.data?.swaps_used ?? 0) + 1;
+	unwrap(
+		await supabase
+			.from('game_players')
+			.update({
+				hand_json: newHand,
+				swaps_used: swapsUsed,
+				swap_request: { action: 'buy', storePosition, discardedCardId, discardedCard }
+			})
+			.eq('game_id', gameId)
+			.eq('user_id', userId)
+	);
+}
+
+export async function passBuyTurn(gameId: string): Promise<void> {
+	const userId = (await supabase.auth.getUser()).data.user!.id;
+	unwrap(
+		await supabase
+			.from('game_players')
+			.update({ swap_request: { action: 'done' } })
+			.eq('game_id', gameId)
+			.eq('user_id', userId)
+	);
+}
+
+export async function resetBuyingState(gameId: string): Promise<void> {
+	const userId = (await supabase.auth.getUser()).data.user!.id;
+	unwrap(
+		await supabase
+			.from('game_players')
+			.update({ swaps_used: 0, swap_request: null })
+			.eq('game_id', gameId)
+			.eq('user_id', userId)
+	);
 }

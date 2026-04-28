@@ -6,7 +6,7 @@ export interface Card {
 	id: string;
 	owner: PlayerKey;
 	color: CardColor;
-	charisma: 1 | 2 | 3;
+	charisma: 1 | 2 | 3 | 4; // CHA4 exists only on Mr. Popular
 	type: 'party_leader' | 'generic';
 }
 
@@ -62,15 +62,35 @@ export interface GameState {
 
 export type MultiplayerPhase =
 	| 'lobby' | 'placement' | 'revealing' | 'resolution'
-	| 'round_end' | 'gerrymandering' | 'game_over';
+	| 'round_end' | 'card_buying' | 'gerrymandering' | 'game_over';
 
-export interface MultiplayerRoundSnapshot {
+// N-player result types (multiplayer only; solo still uses TileResult/GroupResult)
+export interface MPPlayerScore {
+	card: Card;
+	roll: number;
+	score: number;
+}
+
+export interface MPTileResult {
+	tileId: number;
+	scores: Record<string, MPPlayerScore>; // keyed by userId
+	winner: string;                         // userId of winner
+}
+
+export interface MPGroupResult {
+	groupId: string;
+	tileIds: number[];
+	totals: Record<string, number>;         // userId -> total group score
+	perTile: MPTileResult[];
+	winner: string;                         // userId of winner
+}
+
+export interface MPRoundSnapshot {
 	roundNumber: number;
-	myPlacements: Record<number, Card>;
-	opponentPlacements: Record<number, Card>;
+	allPlacements: Record<string, Record<number, Card>>; // userId -> tileId -> Card
 	groups: TileGroup[];
-	tileResults: TileResult[];
-	groupResults: GroupResult[];
+	tileResults: MPTileResult[];
+	groupResults: MPGroupResult[];
 }
 
 // DB row shapes (returned from Supabase queries)
@@ -80,6 +100,10 @@ export interface GameRow {
 	phase: MultiplayerPhase;
 	round_number: number;
 	gerry_player_id: string | null;
+	max_players: number;
+	buying_turn_player_id: string | null;
+	card_store_json: (Card | null)[] | null;
+	draw_pile_json: Card[] | null;
 	created_at: string;
 }
 
@@ -88,10 +112,13 @@ export interface GamePlayerRow {
 	game_id: string;
 	user_id: string;
 	display_name: string;
-	player_index: 0 | 1;
+	player_index: number;
 	round_wins: number;
 	placed_count: number;
 	is_ready: boolean;
+	hand_json: Card[] | null;
+	swaps_used: number;
+	swap_request: { action: 'buy' | 'done'; storePosition?: number; discardedCardId?: string; discardedCard?: Card } | null;
 	created_at: string;
 }
 
@@ -118,8 +145,8 @@ export interface RoundResultRow {
 	id: string;
 	game_id: string;
 	round_number: number;
-	tile_results: TileResult[];
-	group_results: GroupResult[];
+	tile_results: MPTileResult[];
+	group_results: MPGroupResult[];
 	player_tile_wins: Record<string, number>;
 	created_at: string;
 }

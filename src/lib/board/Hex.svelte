@@ -10,11 +10,12 @@
 		size: number;
 		color?: TileColor;
 		placedCardColor?: TileColor;
-		placedCardCharisma?: 1 | 2 | 3;
+		placedCardCharisma?: 1 | 2 | 3 | 4;
 		placedCardIsLeader?: boolean;
 		isSelectable?: boolean;
 		isSwappable?: boolean;
 		result?: TileResult;
+		mpResultWinColor?: string;
 		groupIndex?: number;
 		groupColor?: string;
 		isGerrySelected?: boolean;
@@ -30,7 +31,8 @@
 		result,
 		groupIndex = -1, groupColor,
 		isGerrySelected = false, isGerryAdjacent = false, isGerrymandering = false,
-		onTileClick
+		onTileClick,
+		mpResultWinColor
 	}: Props = $props();
 
 	const fill = $derived(color ? TILE_COLORS[color] : DEFAULT_FILL);
@@ -96,7 +98,7 @@
 		<polygon {points} fill="none" stroke="#1d4ed8" stroke-width="2.5" stroke-dasharray="5 3" opacity="0.8" />
 	{/if}
 
-	{#if isPlaced && !result}
+	{#if isPlaced && !result && !mpResultWinColor}
 		<!-- Card shape -->
 		<rect
 			x={cx - cardW / 2}
@@ -156,7 +158,7 @@
 			pointer-events="none"
 		>{id}</text>
 	{:else if result}
-		<!-- Resolution: winner dot + vote scores -->
+		<!-- Solo resolution: winner dot + vote scores -->
 		<circle cx={cx} cy={cy - size * 0.2} r={size * 0.17} fill={WINNER_COLOR[result.winner]} />
 		<text
 			x={cx}
@@ -172,6 +174,19 @@
 		<text
 			x={cx}
 			y={cy + size * 0.4}
+			text-anchor="middle"
+			dominant-baseline="central"
+			font-size={size * 0.17}
+			font-family="sans-serif"
+			fill="#666"
+			pointer-events="none"
+		>{id}</text>
+	{:else if mpResultWinColor}
+		<!-- Multiplayer resolution: winner dot + tile id -->
+		<circle cx={cx} cy={cy - size * 0.15} r={size * 0.2} fill={mpResultWinColor} opacity="0.9" />
+		<text
+			x={cx}
+			y={cy + size * 0.35}
 			text-anchor="middle"
 			dominant-baseline="central"
 			font-size={size * 0.17}

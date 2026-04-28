@@ -7,6 +7,7 @@
 	import CardHandMP from '$lib/components/CardHandMP.svelte';
 	import PhaseOverlayMP from '$lib/components/PhaseOverlayMP.svelte';
 	import GerrymanderingPanelMP from '$lib/components/GerrymanderingPanelMP.svelte';
+	import CardBuyingPanel from '$lib/components/CardBuyingPanel.svelte';
 	import {
 		mp,
 		initMultiplayer,
@@ -15,6 +16,8 @@
 		setReady,
 		isGerrymanderer,
 		gerryClickTile,
+		otherPlayers,
+		myState,
 		cleanup
 	} from '$lib/game/multiplayerStore.svelte.js';
 	import type { PageData } from './$types.js';
@@ -32,7 +35,7 @@
 	onMount(async () => {
 		const raw = localStorage.getItem('madripoor_session');
 		if (!raw) { goto('/'); return; }
-		let session: { gameId: string; roomCode: string; myUserId: string; myPlayerIndex: 0 | 1 };
+		let session: { gameId: string; roomCode: string; myUserId: string; myPlayerIndex: number };
 		try {
 			session = JSON.parse(raw);
 		} catch {
@@ -66,7 +69,8 @@
 
 	const hasOverlay = $derived(
 		mp.phase !== 'placement' &&
-		mp.phase !== 'lobby'
+		mp.phase !== 'lobby' &&
+		mp.phase !== 'card_buying'
 	);
 
 	const tileClickHandler = $derived(
@@ -87,25 +91,26 @@
 			<div class="round-info">
 				Round {mp.roundNumber}
 				&nbsp;·&nbsp;
-				{mp.myDisplayName} <strong>{mp.roundWins.my}</strong>
-				— <strong>{mp.roundWins.opponent}</strong> {mp.opponentDisplayName || 'Opponent'}
+				{#each mp.players as player, i}
+					{player.displayName} <strong>{player.roundWins}</strong>{#if i < mp.players.length - 1} — {/if}
+				{/each}
 			</div>
 
 			{#if mp.phase === 'placement'}
 				<div class="placement-bar">
-					{#if mp.opponentDisplayName}
+					{#each otherPlayers() as opp}
 						<span class="opponent-counter">
-							{mp.opponentDisplayName}: {mp.opponentPlacedCount}/15
-							{#if mp.opponentIsReady}<span class="ready-badge">Ready</span>{/if}
+							{opp.displayName}: {opp.placedCount}/15
+							{#if opp.isReady}<span class="ready-badge">Ready</span>{/if}
 						</span>
-					{/if}
-					<span class="placement-count">{mp.myPlacedCount}/15 placed</span>
+					{/each}
+					<span class="placement-count">{myState()?.placedCount ?? 0}/15 placed</span>
 					<button
 						class="ready-btn"
-						disabled={mp.myPlacedCount !== 15 || mp.myIsReady}
+						disabled={(myState()?.placedCount ?? 0) !== 15 || (myState()?.isReady ?? false)}
 						onclick={setReady}
 					>
-						{mp.myIsReady ? 'Waiting…' : 'Ready →'}
+						{myState()?.isReady ? 'Waiting…' : 'Ready →'}
 					</button>
 				</div>
 			{:else if mp.phase === 'revealing'}
@@ -121,7 +126,8 @@
 								: 'Click a tile to start grouping'}
 						</span>
 					{:else}
-						<span class="phase-hint">{mp.opponentDisplayName || 'Opponent'} is redistricting…</span>
+						{@const gerryName = mp.players.find(p => p.userId === mp.gerryPlayerId)?.displayName ?? 'Opponent'}
+						<span class="phase-hint">{gerryName} is redistricting…</span>
 					{/if}
 				</div>
 			{/if}
@@ -130,7 +136,9 @@
 		<Board
 			{coloredTiles}
 			placements={mp.myPlacements}
-			results={showResults ? mp.tileResults : undefined}
+			mpResults={showResults ? mp.tileResults : undefined}
+			mpGroupResults={showResults ? mp.groupResults : undefined}
+			myUserId={mp.myUserId ?? undefined}
 			hasSelectedCard={mp.phase === 'placement' && mp.selectedCard !== null}
 			groups={mp.groups}
 			gerrySelectedTileId={mp.phase === 'gerrymandering' ? mp.gerrySelectedTileId : null}
@@ -148,6 +156,10 @@
 
 		{#if mp.phase === 'gerrymandering'}
 			<GerrymanderingPanelMP />
+		{/if}
+
+		{#if mp.phase === 'card_buying'}
+			<CardBuyingPanel />
 		{/if}
 	</main>
 {/if}

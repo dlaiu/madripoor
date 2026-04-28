@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { TILES, axialToPixel, getNeighbors } from './hex.js';
 	import type { TileColor } from './hex.js';
-	import type { Card, TileGroup, TileResult } from '$lib/game/types.js';
+	import type { Card, TileGroup, TileResult, MPTileResult, MPGroupResult } from '$lib/game/types.js';
 	import { groupContaining } from '$lib/game/groups.js';
 	import Hex from './Hex.svelte';
 
@@ -12,6 +12,9 @@
 		size?: number;
 		placements?: Record<number, Card>;
 		results?: TileResult[];
+		mpResults?: MPTileResult[];
+		mpGroupResults?: MPGroupResult[];
+		myUserId?: string;
 		hasSelectedCard?: boolean;
 		groups?: TileGroup[];
 		gerrySelectedTileId?: number | null;
@@ -24,12 +27,35 @@
 		size = 50,
 		placements,
 		results,
+		mpResults,
+		mpGroupResults,
+		myUserId,
 		hasSelectedCard = false,
 		groups = [],
 		gerrySelectedTileId = null,
 		isGerrymandering = false,
 		onTileClick
 	}: Props = $props();
+
+	const mpResultInfo = $derived.by(() => {
+		const map = new Map<number, { winColor: string }>();
+		// Solo tiles
+		if (mpResults) {
+			for (const r of mpResults) {
+				map.set(r.tileId, { winColor: r.winner === myUserId ? '#16a34a' : '#dc2626' });
+			}
+		}
+		// Grouped tiles — all tiles in a group share the group winner's color
+		if (mpGroupResults) {
+			for (const gr of mpGroupResults) {
+				const winColor = gr.winner === myUserId ? '#16a34a' : '#dc2626';
+				for (const r of gr.perTile) {
+					map.set(r.tileId, { winColor });
+				}
+			}
+		}
+		return map;
+	});
 
 	const positions = $derived(
 		TILES.map(tile => {
@@ -85,6 +111,7 @@
 			isSelectable={hasSelectedCard && !(tile.id in (placements ?? {}))}
 			isSwappable={hasSelectedCard && tile.id in (placements ?? {})}
 			result={results?.find(r => r.tileId === tile.id)}
+			mpResultWinColor={mpResultInfo.get(tile.id)?.winColor}
 			groupIndex={groupMeta?.groupIndex ?? -1}
 			groupColor={groupMeta?.groupColor}
 			isGerrySelected={gerrySelectedTileId === tile.id}

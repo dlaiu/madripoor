@@ -5,6 +5,10 @@
 		confirmGerrymandering,
 		clearGroups
 	} from '$lib/game/multiplayerStore.svelte.js';
+
+	const gerryName = $derived(
+		mp.players.find(p => p.userId === mp.gerryPlayerId)?.displayName ?? 'Opponent'
+	);
 	import { validateGroups, maxGroupSize } from '$lib/game/groups.js';
 	import { TILES } from '$lib/board/hex.js';
 
@@ -71,7 +75,7 @@
 		<h2>Redistricting in Progress</h2>
 		<div class="spectator">
 			<p class="spectator-msg">
-				{mp.opponentDisplayName || 'Opponent'} is redistricting…
+				{gerryName} is redistricting…
 			</p>
 			{#if groups.length > 0}
 				<div class="group-list">

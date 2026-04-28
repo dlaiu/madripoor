@@ -15,7 +15,8 @@
 		await startGame(mp.gameId);
 	}
 
-	const canStart = $derived(mp.players.length >= 2);
+	const canStart = $derived(mp.players.length >= mp.maxPlayers);
+	const waitingCount = $derived(mp.maxPlayers - mp.players.length);
 </script>
 
 <div class="lobby">
@@ -44,18 +45,18 @@
 					{/if}
 				</li>
 			{/each}
-			{#if mp.players.length < 2}
+			{#each { length: waitingCount } as _, i}
 				<li class="player-item waiting">
 					<span class="player-dot empty"></span>
-					Waiting for player 2…
+					Waiting for player {mp.players.length + i + 1}…
 				</li>
-			{/if}
+			{/each}
 		</ul>
 	</div>
 
 	{#if isHost()}
 		<button class="start-btn" onclick={handleStart} disabled={!canStart}>
-			{canStart ? 'Start Game →' : 'Waiting for 2 players…'}
+			{canStart ? 'Start Game →' : `Waiting for ${mp.maxPlayers} players…`}
 		</button>
 	{:else}
 		<p class="waiting-msg">Waiting for host to start…</p>
