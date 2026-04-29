@@ -381,29 +381,28 @@ function resolveGroupMP(
 
 	const perTile: MPTileResult[] = group.tileIds.map((tileId) => {
 		const tilePlacements = new Map<string, Card>();
-		const tileEntrenchBonuses: Record<string, boolean> = {};
+		// NOTE: Entrenchment for group tiles is a GROUP-level bonus added in computeTotals,
+		// not a per-tile bonus. Do NOT pass entrenchBonuses to resolveTileMP here.
 		const tileAbilityBonuses: Record<string, number> = {};
 
 		for (const uid of userIds) {
 			const card = allPlacements.get(uid)![tileId];
 			if (card) {
 				tilePlacements.set(uid, card);
-				tileEntrenchBonuses[uid] = detectEntrenchmentMP(tileId, uid, card, prev);
 				const tileColor = ctx.coloredTileColors[tileId] ?? null;
-				// hasPartyLeaderPenalty is computed at resolveRoundMP level; pass false here
-				// (penalty is applied via CHA override before this point in Phase 2)
+				// hasPartyLeaderPenalty — already applied via CHA override in resolveRoundMP Phase 2
 				tileAbilityBonuses[uid] = computeAbilityScoreBonus(
 					card,
 					tileId,
 					tileColor,
 					false, // isSolo = false (in a group)
 					allCardsInGroup,
-					false // hasPartyLeaderPenalty — already applied via CHA override
+					false
 				);
 			}
 		}
 
-		return resolveTileMP(tileId, tilePlacements, tileEntrenchBonuses, {
+		return resolveTileMP(tileId, tilePlacements, {}, {
 			tileColor: ctx.coloredTileColors[tileId] ?? null,
 			abilityBonuses: tileAbilityBonuses,
 			underdogActive
@@ -443,14 +442,13 @@ function resolveGroupMP(
 	while (getWinner(totals) === null) {
 		finalPerTile = group.tileIds.map((tileId) => {
 			const tilePlacements = new Map<string, Card>();
-			const tileEntrenchBonuses: Record<string, boolean> = {};
+			// No entrenchment bonuses at tile level — group entrenchment is in computeTotals
 			const tileAbilityBonuses: Record<string, number> = {};
 
 			for (const uid of userIds) {
 				const card = allPlacements.get(uid)![tileId];
 				if (card) {
 					tilePlacements.set(uid, card);
-					tileEntrenchBonuses[uid] = detectEntrenchmentMP(tileId, uid, card, prev);
 					const tileColor = ctx.coloredTileColors[tileId] ?? null;
 					tileAbilityBonuses[uid] = computeAbilityScoreBonus(
 						card,
@@ -463,7 +461,7 @@ function resolveGroupMP(
 				}
 			}
 
-			return resolveTileMP(tileId, tilePlacements, tileEntrenchBonuses, {
+			return resolveTileMP(tileId, tilePlacements, {}, {
 				tileColor: ctx.coloredTileColors[tileId] ?? null,
 				abilityBonuses: tileAbilityBonuses,
 				underdogActive
