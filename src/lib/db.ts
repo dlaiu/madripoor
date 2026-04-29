@@ -1,5 +1,5 @@
 import { supabase } from './supabase.js';
-import { buildDrawPile, shuffleCards } from './game/deckFactory.js';
+import { buildDrawPile, coerceCard, shuffleCards } from './game/deckFactory.js';
 import type {
 	Card,
 	CardPlacementRow,
@@ -248,7 +248,9 @@ export async function getCardPlacements(
 		.select('*')
 		.eq('game_id', gameId)
 		.eq('round_number', roundNumber);
-	return unwrap(res) as CardPlacementRow[];
+	const rows = unwrap(res) as CardPlacementRow[];
+	// Coerce pre-M6 rows that lack the `ability` field
+	return rows.map((r) => ({ ...r, card_json: coerceCard(r.card_json as unknown as Record<string, unknown>) }));
 }
 
 // ── Hand persistence ──────────────────────────────────────────────────────────

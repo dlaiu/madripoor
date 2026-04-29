@@ -1,6 +1,26 @@
 export type CardColor = 'red' | 'blue' | 'green';
 export type PlayerKey = 'human' | 'cpu';
-export type GamePhase = 'placement' | 'revealing' | 'resolution' | 'round_end' | 'gerrymandering' | 'game_over';
+export type GamePhase =
+	| 'placement'
+	| 'scouting'
+	| 'revealing'
+	| 'resolution'
+	| 'round_end'
+	| 'card_buying'
+	| 'gerrymandering'
+	| 'game_over';
+
+export type CardAbility =
+	| 'hometown'
+	| 'pollster'
+	| 'hard_worker'
+	| 'scout'
+	| 'independent'
+	| 'mr_popular'
+	| 'disadvantage'
+	| 'coalition'
+	| 'underdog'
+	| 'none';
 
 export interface Card {
 	id: string;
@@ -8,6 +28,14 @@ export interface Card {
 	color: CardColor;
 	charisma: 1 | 2 | 3 | 4; // CHA4 exists only on Mr. Popular
 	type: 'party_leader' | 'generic';
+	ability: CardAbility;
+}
+
+// Passed to the resolver to apply ability logic without changing the base pipeline
+export interface ResolverContext {
+	coloredTileColors: Record<number, CardColor>; // tile id -> fixed color
+	hardWorkerLevels: Record<string, number>; // "cardId:tileId" -> current CHA (missing = CHA1)
+	playerHands: Record<string, Card[]>; // userId -> hand (for Party Leader penalty check)
 }
 
 export interface TileGroup {
@@ -56,13 +84,23 @@ export interface GameState {
 	currentRound: RoundState;
 	history: RoundState[];
 	gerrySelectedTileId: number | null;
+	drawPile: Card[];
+	cardStore: (Card | null)[];
+	hardWorkerLevels: Record<string, number>;
 }
 
 // ── Multiplayer types ──────────────────────────────────────────────────────────
 
 export type MultiplayerPhase =
-	| 'lobby' | 'placement' | 'revealing' | 'resolution'
-	| 'round_end' | 'card_buying' | 'gerrymandering' | 'game_over';
+	| 'lobby'
+	| 'placement'
+	| 'scouting'
+	| 'revealing'
+	| 'resolution'
+	| 'round_end'
+	| 'card_buying'
+	| 'gerrymandering'
+	| 'game_over';
 
 // N-player result types (multiplayer only; solo still uses TileResult/GroupResult)
 export interface MPPlayerScore {
@@ -104,6 +142,7 @@ export interface GameRow {
 	buying_turn_player_id: string | null;
 	card_store_json: (Card | null)[] | null;
 	draw_pile_json: Card[] | null;
+	hard_worker_levels_json: Record<string, number> | null;
 	created_at: string;
 }
 
@@ -119,6 +158,8 @@ export interface GamePlayerRow {
 	hand_json: Card[] | null;
 	swaps_used: number;
 	swap_request: { action: 'buy' | 'done'; storePosition?: number; discardedCardId?: string; discardedCard?: Card } | null;
+	scout_done: boolean;
+	scout_swap: { scoutTileId: number; targetTileId: number; actorUserId: string } | null;
 	created_at: string;
 }
 
@@ -129,6 +170,7 @@ export interface CardPlacementRow {
 	user_id: string;
 	tile_id: number;
 	card_json: Card;
+	declared_color: CardColor | null;
 	created_at: string;
 }
 

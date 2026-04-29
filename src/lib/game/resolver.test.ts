@@ -8,7 +8,8 @@ const makeCard = (id: string, charisma: 1 | 2 | 3 = 2): Card => ({
 	owner: 'human',
 	color: 'red',
 	charisma,
-	type: 'generic'
+	type: 'generic',
+	ability: 'none'
 });
 
 const humanCard = makeCard('h-1', 2);

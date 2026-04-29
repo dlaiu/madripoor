@@ -1,4 +1,4 @@
-import { buildHand } from './deckFactory.js';
+import { buildDrawPile, buildHand } from './deckFactory.js';
 import {
 	addTileToGroup,
 	cpuAutoGerrymander,
@@ -34,7 +34,10 @@ export const game: GameState = $state({
 	selectedCard: null,
 	currentRound: freshRound(1),
 	history: [],
-	gerrySelectedTileId: null
+	gerrySelectedTileId: null,
+	drawPile: [],
+	cardStore: [null, null, null, null],
+	hardWorkerLevels: {}
 });
 
 export function resetGame(): void {
@@ -46,6 +49,9 @@ export function resetGame(): void {
 	game.currentRound = freshRound(1);
 	game.history = [];
 	game.gerrySelectedTileId = null;
+	game.drawPile = buildDrawPile(2);
+	game.cardStore = [null, null, null, null];
+	game.hardWorkerLevels = {};
 }
 
 export function selectCard(card: Card): void {

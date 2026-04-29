@@ -1,4 +1,4 @@
-import { buildHand } from './deckFactory.js';
+import { buildHand, coerceCard } from './deckFactory.js';
 import * as db from '../db.js';
 import { addTileToGroup, groupContaining, removeTileFromGroup, validateGroups } from './groups.js';
 import { resolveRoundMP } from './resolver.js';
@@ -154,9 +154,9 @@ export async function initMultiplayer(
 	mp.gerryPlayerId = gameRow.gerry_player_id;
 	mp.roomCode = gameRow.room_code;
 	mp.maxPlayers = gameRow.max_players ?? 2;
-	mp.cardStore = gameRow.card_store_json ?? [];
+	mp.cardStore = (gameRow.card_store_json ?? []).map((c) => c ? coerceCard(c as unknown as Record<string, unknown>) : null);
 	mp.buyingTurnUserId = gameRow.buying_turn_player_id ?? null;
-	mp.drawPile = gameRow.draw_pile_json ?? [];
+	mp.drawPile = (gameRow.draw_pile_json ?? []).map((c) => coerceCard(c as unknown as Record<string, unknown>));
 
 	const groupRound = gameRow.phase === 'gerrymandering'
 		? gameRow.round_number
@@ -191,7 +191,7 @@ async function loadMyHand(gameId: string, myUserId: string, roundNumber: number)
 	const rows = await db.getGamePlayers(gameId);
 	const myRow = rows.find((r) => r.user_id === myUserId);
 	if (myRow?.hand_json && myRow.hand_json.length > 0) {
-		mp.myHand = myRow.hand_json;
+		mp.myHand = myRow.hand_json.map((c) => coerceCard(c as unknown as Record<string, unknown>));
 	} else {
 		// Round 1 or hand not yet persisted — build fresh and save
 		const freshHand = buildHand('human');
@@ -255,9 +255,9 @@ function handleGameChange(payload: { new: Record<string, unknown> }): void {
 	mp.phase = row.phase as MultiplayerPhase;
 	mp.roundNumber = row.round_number as number;
 	mp.gerryPlayerId = (row.gerry_player_id as string) ?? null;
-	mp.cardStore = (row.card_store_json as (Card | null)[]) ?? [];
+	mp.cardStore = ((row.card_store_json as (Card | null)[]) ?? []).map((c) => c ? coerceCard(c as unknown as Record<string, unknown>) : null);
 	mp.buyingTurnUserId = (row.buying_turn_player_id as string) ?? null;
-	mp.drawPile = (row.draw_pile_json as Card[]) ?? [];
+	mp.drawPile = ((row.draw_pile_json as Card[]) ?? []).map((c) => coerceCard(c as unknown as Record<string, unknown>));
 
 	if (mp.phase !== prevPhase) {
 		onPhaseTransition(prevPhase, mp.phase);
