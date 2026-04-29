@@ -2,6 +2,7 @@ import { supabase } from './supabase.js';
 import { buildDrawPile, coerceCard, shuffleCards } from './game/deckFactory.js';
 import type {
 	Card,
+	CardColor,
 	CardPlacementRow,
 	GamePlayerRow,
 	GameRow,
@@ -173,7 +174,8 @@ export async function submitPlacement(
 	gameId: string,
 	roundNumber: number,
 	tileId: number,
-	card: Card
+	card: Card,
+	declaredColor?: CardColor | null
 ): Promise<void> {
 	unwrap(
 		await supabase.from('card_placements').upsert(
@@ -182,7 +184,8 @@ export async function submitPlacement(
 				round_number: roundNumber,
 				user_id: (await supabase.auth.getUser()).data.user!.id,
 				tile_id: tileId,
-				card_json: card
+				card_json: card,
+				declared_color: declaredColor ?? null
 			},
 			{ onConflict: 'game_id,round_number,user_id,tile_id' }
 		)

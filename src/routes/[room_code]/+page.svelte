@@ -8,6 +8,7 @@
 	import PhaseOverlayMP from '$lib/components/PhaseOverlayMP.svelte';
 	import GerrymanderingPanelMP from '$lib/components/GerrymanderingPanelMP.svelte';
 	import CardBuyingPanel from '$lib/components/CardBuyingPanel.svelte';
+	import MrPopularColorModal from '$lib/components/MrPopularColorModal.svelte';
 	import {
 		mp,
 		initMultiplayer,
@@ -18,7 +19,9 @@
 		gerryClickTile,
 		otherPlayers,
 		myState,
-		cleanup
+		cleanup,
+		confirmMrPopularColor,
+		cancelMrPopularPlacement
 	} from '$lib/game/multiplayerStore.svelte.js';
 	import type { PageData } from './$types.js';
 
@@ -162,6 +165,13 @@
 			<CardBuyingPanel />
 		{/if}
 	</main>
+{/if}
+
+{#if mp.mrPopularPending !== null}
+	<MrPopularColorModal
+		onConfirm={confirmMrPopularColor}
+		onCancel={cancelMrPopularPlacement}
+	/>
 {/if}
 
 {#if mp.error}

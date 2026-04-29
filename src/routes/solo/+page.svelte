@@ -4,7 +4,8 @@
 	import PhaseOverlay from '$lib/components/PhaseOverlay.svelte';
 	import GerrymanderingPanel from '$lib/components/GerrymanderingPanel.svelte';
 	import RoundSummary from '$lib/components/RoundSummary.svelte';
-	import { game, placeCard, unplaceCard, startReveal, gerryClickTile } from '$lib/game/gameState.svelte.js';
+	import MrPopularColorModal from '$lib/components/MrPopularColorModal.svelte';
+	import { game, placeCard, unplaceCard, startReveal, gerryClickTile, confirmMrPopularColorSolo, cancelMrPopularPlacementSolo } from '$lib/game/gameState.svelte.js';
 	import type { TileColor } from '$lib/board/hex.js';
 
 	const coloredTiles: Record<number, TileColor> = {
@@ -101,6 +102,13 @@
 	{/if}
 	<RoundSummary />
 </main>
+
+{#if game.mrPopularPending !== null}
+	<MrPopularColorModal
+		onConfirm={confirmMrPopularColorSolo}
+		onCancel={cancelMrPopularPlacementSolo}
+	/>
+{/if}
 
 <style>
 	main {

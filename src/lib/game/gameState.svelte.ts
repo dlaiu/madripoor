@@ -7,7 +7,7 @@ import {
 	validateGroups
 } from './groups.js';
 import { cpuPlaceCards, resolveRound } from './resolver.js';
-import type { Card, GameState, PlayerKey, RoundState } from './types.js';
+import type { Card, CardColor, GameState, PlayerKey, RoundState } from './types.js';
 import { getNeighbors, TILES } from '../board/hex.js';
 
 const TILE_IDS = TILES.map((t) => t.id);
@@ -37,7 +37,8 @@ export const game: GameState = $state({
 	gerrySelectedTileId: null,
 	drawPile: [],
 	cardStore: [null, null, null, null],
-	hardWorkerLevels: {}
+	hardWorkerLevels: {},
+	mrPopularPending: null
 });
 
 export function resetGame(): void {
@@ -52,6 +53,7 @@ export function resetGame(): void {
 	game.drawPile = buildDrawPile(2);
 	game.cardStore = [null, null, null, null];
 	game.hardWorkerLevels = {};
+	game.mrPopularPending = null;
 }
 
 export function selectCard(card: Card): void {
@@ -66,6 +68,14 @@ export function placeCard(tileId: number): void {
 	if (!game.selectedCard) return;
 
 	const card = game.selectedCard;
+
+	// Mr. Popular requires a color declaration before placement is committed
+	if (card.ability === 'mr_popular') {
+		game.mrPopularPending = { tileId, card };
+		game.selectedCard = null;
+		return;
+	}
+
 	const displaced = game.currentRound.humanPlacements[tileId];
 
 	game.humanHand = game.humanHand.filter((c) => c.id !== card.id);
@@ -73,6 +83,25 @@ export function placeCard(tileId: number): void {
 
 	game.currentRound.humanPlacements = { ...game.currentRound.humanPlacements, [tileId]: card };
 	game.selectedCard = null;
+}
+
+export function confirmMrPopularColorSolo(color: CardColor): void {
+	if (!game.mrPopularPending) return;
+
+	const { tileId, card } = game.mrPopularPending;
+	const displaced = game.currentRound.humanPlacements[tileId];
+
+	game.humanHand = game.humanHand.filter((c) => c.id !== card.id);
+	if (displaced) game.humanHand = [...game.humanHand, displaced];
+
+	// Store the card with the declared color applied so resolver sees it correctly
+	const cardWithColor: Card = { ...card, color };
+	game.currentRound.humanPlacements = { ...game.currentRound.humanPlacements, [tileId]: cardWithColor };
+	game.mrPopularPending = null;
+}
+
+export function cancelMrPopularPlacementSolo(): void {
+	game.mrPopularPending = null;
 }
 
 export function unplaceCard(tileId: number): void {

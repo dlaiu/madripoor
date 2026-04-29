@@ -4,6 +4,7 @@ import { addTileToGroup, groupContaining, removeTileFromGroup, validateGroups } 
 import { resolveRoundMP } from './resolver.js';
 import type {
 	Card,
+	CardColor,
 	GamePlayerRow,
 	MPGroupResult,
 	MPRoundSnapshot,
@@ -68,6 +69,9 @@ export const mp = $state({
 
 	// For entrenchment detection
 	history: [] as MPRoundSnapshot[],
+
+	// Mr. Popular pending placement (awaiting color declaration)
+	mrPopularPending: null as { tileId: number; card: Card } | null,
 
 	error: null as string | null
 });
@@ -425,7 +429,11 @@ async function runResolution(): Promise<void> {
 	const allPlacementsMap = new Map<string, Record<number, Card>>();
 	for (const r of rows) {
 		if (!allPlacementsMap.has(r.user_id)) allPlacementsMap.set(r.user_id, {});
-		allPlacementsMap.get(r.user_id)![r.tile_id] = r.card_json;
+		let card = coerceCard(r.card_json as unknown as Record<string, unknown>);
+		if (card.ability === 'mr_popular' && r.declared_color) {
+			card = { ...card, color: r.declared_color };
+		}
+		allPlacementsMap.get(r.user_id)![r.tile_id] = card;
 	}
 
 	// Update local allPlacements so board shows everyone's cards immediately
@@ -556,6 +564,14 @@ export async function placeCard(tileId: number): Promise<void> {
 	if (!mp.selectedCard || !mp.gameId) return;
 
 	const card = mp.selectedCard;
+
+	// Mr. Popular requires a color declaration before placement is written to DB
+	if (card.ability === 'mr_popular') {
+		mp.mrPopularPending = { tileId, card };
+		mp.selectedCard = null;
+		return;
+	}
+
 	const displaced = mp.myPlacements[tileId];
 
 	mp.myHand = mp.myHand.filter((c) => c.id !== card.id);
@@ -570,6 +586,30 @@ export async function placeCard(tileId: number): Promise<void> {
 	await db.submitPlacement(mp.gameId, mp.roundNumber, tileId, card);
 	if (displaced) await db.removePlacement(mp.gameId, mp.roundNumber, tileId);
 	await db.setPlacedCount(mp.gameId, Object.keys(mp.myPlacements).length);
+}
+
+export async function confirmMrPopularColor(color: CardColor): Promise<void> {
+	if (!mp.mrPopularPending || !mp.gameId) return;
+
+	const { tileId, card } = mp.mrPopularPending;
+	const displaced = mp.myPlacements[tileId];
+
+	mp.myHand = mp.myHand.filter((c) => c.id !== card.id);
+	if (displaced) mp.myHand = [...mp.myHand, displaced];
+
+	mp.myPlacements = { ...mp.myPlacements, [tileId]: card };
+	mp.mrPopularPending = null;
+
+	const myP = myState();
+	if (myP) myP.placedCount = Object.keys(mp.myPlacements).length;
+
+	await db.submitPlacement(mp.gameId, mp.roundNumber, tileId, card, color);
+	if (displaced) await db.removePlacement(mp.gameId, mp.roundNumber, tileId);
+	await db.setPlacedCount(mp.gameId, Object.keys(mp.myPlacements).length);
+}
+
+export function cancelMrPopularPlacement(): void {
+	mp.mrPopularPending = null;
 }
 
 export async function unplaceCard(tileId: number): Promise<void> {
