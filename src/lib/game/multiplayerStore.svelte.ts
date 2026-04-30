@@ -10,6 +10,7 @@ import type {
 	MPRoundSnapshot,
 	MPTileResult,
 	MultiplayerPhase,
+	ResolverContext,
 	TileGroup
 } from './types.js';
 import { getNeighbors } from '../board/hex.js';
@@ -72,6 +73,9 @@ export const mp = $state({
 
 	// Mr. Popular pending placement (awaiting color declaration)
 	mrPopularPending: null as { tileId: number; card: Card } | null,
+
+	// Hard Worker CHA escalation levels: "cardId:tileId" -> current CHA
+	hardWorkerLevels: {} as Record<string, number>,
 
 	error: null as string | null
 });
@@ -161,6 +165,7 @@ export async function initMultiplayer(
 	mp.cardStore = (gameRow.card_store_json ?? []).map((c) => c ? coerceCard(c as unknown as Record<string, unknown>) : null);
 	mp.buyingTurnUserId = gameRow.buying_turn_player_id ?? null;
 	mp.drawPile = (gameRow.draw_pile_json ?? []).map((c) => coerceCard(c as unknown as Record<string, unknown>));
+	mp.hardWorkerLevels = gameRow.hard_worker_levels_json ?? {};
 
 	const groupRound = gameRow.phase === 'gerrymandering'
 		? gameRow.round_number
@@ -262,6 +267,7 @@ function handleGameChange(payload: { new: Record<string, unknown> }): void {
 	mp.cardStore = ((row.card_store_json as (Card | null)[]) ?? []).map((c) => c ? coerceCard(c as unknown as Record<string, unknown>) : null);
 	mp.buyingTurnUserId = (row.buying_turn_player_id as string) ?? null;
 	mp.drawPile = ((row.draw_pile_json as Card[]) ?? []).map((c) => coerceCard(c as unknown as Record<string, unknown>));
+	mp.hardWorkerLevels = (row.hard_worker_levels_json as Record<string, number>) ?? {};
 
 	if (mp.phase !== prevPhase) {
 		onPhaseTransition(prevPhase, mp.phase);
@@ -442,7 +448,14 @@ async function runResolution(): Promise<void> {
 	// Build prev snapshot for entrenchment detection
 	const last = mp.history[mp.history.length - 1] ?? null;
 
-	const { tileResults, groupResults } = resolveRoundMP(allPlacementsMap, mp.groups, last);
+	const players = await db.getGamePlayers(mp.gameId);
+	const ctx: ResolverContext = {
+		coloredTileColors: {},
+		hardWorkerLevels: mp.hardWorkerLevels,
+		playerHands: Object.fromEntries(players.map((p) => [p.user_id, p.hand_json ?? []]))
+	};
+
+	const { tileResults, groupResults, hardWorkerEscalations } = resolveRoundMP(allPlacementsMap, mp.groups, last, ctx);
 
 	// Compute tile wins per player
 	const playerTileWins: Record<string, number> = {};
@@ -465,6 +478,10 @@ async function runResolution(): Promise<void> {
 	const finalPhase = newWins >= 3 ? 'game_over' : 'resolution';
 
 	await db.writeRoundResults(mp.gameId, mp.roundNumber, tileResults, groupResults, playerTileWins);
+
+	// Persist Hard Worker escalations
+	mp.hardWorkerLevels = hardWorkerEscalations;
+	await supabase.from('games').update({ hard_worker_levels_json: hardWorkerEscalations }).eq('id', mp.gameId);
 
 	// Host updates their own round_wins if they won (RLS blocks updating others)
 	if (winnerId === mp.myUserId) {

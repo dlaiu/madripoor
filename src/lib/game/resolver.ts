@@ -130,25 +130,115 @@ export function resolveRound(
 	humanPlacements: Record<number, Card>,
 	cpuPlacements: Map<number, Card>,
 	groups: TileGroup[],
-	prev: RoundState | null
-): { tileResults: TileResult[]; groupResults: GroupResult[] } {
+	prev: RoundState | null,
+	ctx: ResolverContext = { coloredTileColors: {}, hardWorkerLevels: {}, playerHands: {} }
+): { tileResults: TileResult[]; groupResults: GroupResult[]; hardWorkerEscalations: Record<string, number> } {
 	const groupedTileIds = new Set(groups.flatMap((g) => g.tileIds));
 
+	// Apply Hard Worker CHA override to human placements
+	const effectiveHumanPlacements: Record<number, Card> = {};
+	for (const [key, card] of Object.entries(humanPlacements)) {
+		const tileId = Number(key);
+		let effectiveCard = card as Card;
+		if (effectiveCard.ability === 'hard_worker') {
+			const hwKey = `${effectiveCard.id}:${tileId}`;
+			if (ctx.hardWorkerLevels[hwKey] !== undefined) {
+				effectiveCard = { ...effectiveCard, charisma: ctx.hardWorkerLevels[hwKey] as 1 | 2 | 3 };
+			}
+		}
+		effectiveHumanPlacements[tileId] = effectiveCard;
+	}
+
+	// Apply Hard Worker CHA override to cpu placements
+	const effectiveCpuPlacements = new Map<number, Card>();
+	for (const [tileId, card] of cpuPlacements) {
+		let effectiveCard = card;
+		if (effectiveCard.ability === 'hard_worker') {
+			const hwKey = `${effectiveCard.id}:${tileId}`;
+			if (ctx.hardWorkerLevels[hwKey] !== undefined) {
+				effectiveCard = { ...effectiveCard, charisma: ctx.hardWorkerLevels[hwKey] as 1 | 2 | 3 };
+			}
+		}
+		effectiveCpuPlacements.set(tileId, effectiveCard);
+	}
+
 	const tileResults: TileResult[] = [];
-	for (const [key, humanCard] of Object.entries(humanPlacements)) {
+	for (const [key, humanCard] of Object.entries(effectiveHumanPlacements)) {
 		const tileId = Number(key);
 		if (groupedTileIds.has(tileId)) continue;
-		const cpuCard = cpuPlacements.get(tileId)!;
+		const cpuCard = effectiveCpuPlacements.get(tileId)!;
 		const hE = detectEntrenchment(tileId, 'human', humanCard as Card, prev);
 		const cE = detectEntrenchment(tileId, 'cpu', cpuCard, prev);
 		tileResults.push(resolveTile(tileId, humanCard as Card, cpuCard, hE, cE));
 	}
 
 	const groupResults: GroupResult[] = groups.map((group) =>
-		resolveGroup(group, humanPlacements, cpuPlacements, prev)
+		resolveGroup(group, effectiveHumanPlacements, effectiveCpuPlacements, prev)
 	);
 
-	return { tileResults, groupResults };
+	// Compute Hard Worker escalations (mirrors resolveRoundMP Phase 7)
+	const hardWorkerEscalations: Record<string, number> = { ...ctx.hardWorkerLevels };
+
+	// Process human placements
+	for (const [key, card] of Object.entries(humanPlacements)) {
+		if (card.ability !== 'hard_worker') continue;
+		const tileId = Number(key);
+		const hwKey = `${card.id}:${tileId}`;
+
+		const prevCard = prev?.humanPlacements[tileId];
+		const wasOnSameTile = prevCard?.id === card.id;
+
+		if (!wasOnSameTile) {
+			delete hardWorkerEscalations[hwKey];
+			continue;
+		}
+
+		const inGroup = groupedTileIds.has(tileId);
+		let ownerWon = false;
+		if (inGroup) {
+			const gr = groupResults.find((r) => r.tileIds.includes(tileId));
+			ownerWon = gr?.winner === 'human';
+		} else {
+			const tr = tileResults.find((r) => r.tileId === tileId);
+			ownerWon = tr?.winner === 'human';
+		}
+
+		if (!ownerWon) {
+			const currentCha = hardWorkerEscalations[hwKey] ?? (card.charisma as number);
+			hardWorkerEscalations[hwKey] = Math.min(3, currentCha + 1);
+		}
+	}
+
+	// Process cpu placements
+	for (const [tileId, card] of cpuPlacements) {
+		if (card.ability !== 'hard_worker') continue;
+		const hwKey = `${card.id}:${tileId}`;
+
+		const prevCard = prev?.cpuPlacements[tileId];
+		const wasOnSameTile = prevCard?.id === card.id;
+
+		if (!wasOnSameTile) {
+			delete hardWorkerEscalations[hwKey];
+			continue;
+		}
+
+		const inGroup = groupedTileIds.has(tileId);
+		let ownerWon = false;
+		if (inGroup) {
+			const gr = groupResults.find((r) => r.tileIds.includes(tileId));
+			ownerWon = gr?.winner === 'cpu';
+		} else {
+			const tr = tileResults.find((r) => r.tileId === tileId);
+			ownerWon = tr?.winner === 'cpu';
+		}
+
+		if (!ownerWon) {
+			const currentCha = hardWorkerEscalations[hwKey] ?? (card.charisma as number);
+			hardWorkerEscalations[hwKey] = Math.min(3, currentCha + 1);
+		}
+	}
+
+	return { tileResults, groupResults, hardWorkerEscalations };
 }
 
 // ── N-player resolver (multiplayer) ───────────────────────────────────────────

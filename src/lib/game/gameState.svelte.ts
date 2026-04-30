@@ -121,11 +121,18 @@ export function resolve(): void {
 	const cpuPlacements = cpuPlaceCards(game.cpuHand, TILE_IDS);
 	const prev = game.history.length > 0 ? game.history[game.history.length - 1] : null;
 
-	const { tileResults, groupResults } = resolveRound(
+	const ctx = {
+		coloredTileColors: {} as Record<number, CardColor>,
+		hardWorkerLevels: game.hardWorkerLevels,
+		playerHands: {} as Record<string, Card[]>
+	};
+
+	const { tileResults, groupResults, hardWorkerEscalations } = resolveRound(
 		game.currentRound.humanPlacements,
 		cpuPlacements,
 		game.currentRound.groups,
-		prev
+		prev,
+		ctx
 	);
 
 	game.currentRound.cpuPlacements = Object.fromEntries(cpuPlacements);
@@ -145,6 +152,8 @@ export function resolve(): void {
 	const roundWinner: PlayerKey = humanTiles >= cpuTiles ? 'human' : 'cpu';
 	game.currentRound.winner = roundWinner;
 	game.roundWins[roundWinner]++;
+
+	game.hardWorkerLevels = hardWorkerEscalations;
 
 	game.phase = game.roundWins[roundWinner] >= 3 ? 'game_over' : 'round_end';
 }
