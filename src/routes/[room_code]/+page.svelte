@@ -9,6 +9,8 @@
 	import GerrymanderingPanelMP from '$lib/components/GerrymanderingPanelMP.svelte';
 	import CardBuyingPanel from '$lib/components/CardBuyingPanel.svelte';
 	import MrPopularColorModal from '$lib/components/MrPopularColorModal.svelte';
+	import ScoutingPanel from '$lib/components/ScoutingPanel.svelte';
+	import ScoutSwapToast from '$lib/components/ScoutSwapToast.svelte';
 	import {
 		mp,
 		initMultiplayer,
@@ -74,7 +76,8 @@
 	const hasOverlay = $derived(
 		mp.phase !== 'placement' &&
 		mp.phase !== 'lobby' &&
-		mp.phase !== 'card_buying'
+		mp.phase !== 'card_buying' &&
+		mp.phase !== 'scouting'
 	);
 
 	const tileClickHandler = $derived(
@@ -129,6 +132,14 @@
 						{myState()?.isReady ? 'Waiting…' : 'Ready →'}
 					</button>
 				</div>
+			{:else if mp.phase === 'scouting'}
+				<div class="placement-bar">
+					{#if mp.scoutingPlayerIds.includes(mp.myUserId ?? '')}
+						<span class="phase-hint">Scout phase — make your decision below</span>
+					{:else}
+						<span class="phase-hint">Scouting in progress…</span>
+					{/if}
+				</div>
 			{:else if mp.phase === 'revealing'}
 				<div class="placement-bar">
 					<span class="phase-hint">Flipping cards…</span>
@@ -167,6 +178,16 @@
 			<CardHandMP />
 		{/if}
 
+		{#if mp.phase === 'scouting'}
+			{#if mp.scoutingPlayerIds.includes(mp.myUserId ?? '')}
+				<ScoutingPanel />
+			{:else}
+				<div class="waiting-overlay">
+					<p>Scouting in progress…</p>
+				</div>
+			{/if}
+		{/if}
+
 		{#if mp.phase === 'resolution' || mp.phase === 'round_end' || mp.phase === 'game_over' || mp.phase === 'revealing'}
 			<PhaseOverlayMP />
 		{/if}
@@ -180,6 +201,9 @@
 		{/if}
 	</main>
 {/if}
+
+<!-- Always render toast (self-hides when no swap) -->
+<ScoutSwapToast />
 
 {#if mp.mrPopularPending !== null}
 	<MrPopularColorModal
@@ -306,5 +330,25 @@
 		border-radius: 8px;
 		font-size: 0.85rem;
 		font-family: sans-serif;
+	}
+
+	.waiting-overlay {
+		position: fixed;
+		inset: 0;
+		background: rgba(0, 0, 0, 0.35);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		z-index: 50;
+		font-family: sans-serif;
+	}
+
+	.waiting-overlay p {
+		background: white;
+		padding: 20px 32px;
+		border-radius: 10px;
+		font-size: 1.1rem;
+		color: #374151;
+		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
 	}
 </style>

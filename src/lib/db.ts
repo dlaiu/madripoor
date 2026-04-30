@@ -236,7 +236,7 @@ export async function resetReadyStatus(gameId: string): Promise<void> {
 	unwrap(
 		await supabase
 			.from('game_players')
-			.update({ is_ready: false, placed_count: 0, swaps_used: 0, swap_request: null })
+			.update({ is_ready: false, placed_count: 0, swaps_used: 0, swap_request: null, scout_done: false, scout_swap: null })
 			.eq('game_id', gameId)
 			.eq('user_id', userId)
 	);
@@ -469,6 +469,90 @@ export async function resetBuyingState(gameId: string): Promise<void> {
 		await supabase
 			.from('game_players')
 			.update({ swaps_used: 0, swap_request: null })
+			.eq('game_id', gameId)
+			.eq('user_id', userId)
+	);
+}
+
+// ── Scout phase ───────────────────────────────────────────────────────────────
+
+export async function peekScoutTile(
+	gameId: string,
+	roundNumber: number,
+	tileId: number
+): Promise<CardPlacementRow[]> {
+	const res = await supabase.rpc('peek_scout_tile', {
+		p_game_id: gameId,
+		p_round_number: roundNumber,
+		p_tile_id: tileId
+	});
+	const rows = unwrap(res) as CardPlacementRow[];
+	return rows.map((r) => ({ ...r, card_json: coerceCard(r.card_json as unknown as Record<string, unknown>) }));
+}
+
+export async function submitScoutSwap(
+	gameId: string,
+	roundNumber: number,
+	scoutTileId: number,
+	targetTileId: number
+): Promise<void> {
+	const userId = (await supabase.auth.getUser()).data.user!.id;
+	// Swap the two card_placements rows for this player
+	const rows = unwrap(
+		await supabase
+			.from('card_placements')
+			.select('tile_id, card_json, declared_color')
+			.eq('game_id', gameId)
+			.eq('round_number', roundNumber)
+			.eq('user_id', userId)
+			.in('tile_id', [scoutTileId, targetTileId])
+	) as { tile_id: number; card_json: unknown; declared_color: string | null }[];
+
+	const scoutRow = rows.find((r) => r.tile_id === scoutTileId);
+	const targetRow = rows.find((r) => r.tile_id === targetTileId);
+	if (!scoutRow || !targetRow) throw new Error('Scout swap: rows not found');
+
+	// Upsert both swapped positions
+	unwrap(
+		await supabase.from('card_placements').upsert(
+			[
+				{ game_id: gameId, round_number: roundNumber, user_id: userId, tile_id: scoutTileId, card_json: targetRow.card_json, declared_color: targetRow.declared_color },
+				{ game_id: gameId, round_number: roundNumber, user_id: userId, tile_id: targetTileId, card_json: scoutRow.card_json, declared_color: scoutRow.declared_color }
+			],
+			{ onConflict: 'game_id,round_number,user_id,tile_id' }
+		)
+	);
+
+	// Mark scout_swap + scout_done
+	unwrap(
+		await supabase
+			.from('game_players')
+			.update({
+				scout_swap: { scoutTileId, targetTileId, actorUserId: userId },
+				scout_done: true
+			})
+			.eq('game_id', gameId)
+			.eq('user_id', userId)
+	);
+}
+
+export async function setScoutDone(gameId: string): Promise<void> {
+	const userId = (await supabase.auth.getUser()).data.user!.id;
+	unwrap(
+		await supabase
+			.from('game_players')
+			.update({ scout_done: true })
+			.eq('game_id', gameId)
+			.eq('user_id', userId)
+	);
+}
+
+export async function resetScoutState(gameId: string): Promise<void> {
+	const userId = (await supabase.auth.getUser()).data.user!.id;
+	unwrap(
+		await supabase
+			.from('game_players')
+			.update({ scout_done: false, scout_swap: null })
 			.eq('game_id', gameId)
 			.eq('user_id', userId)
 	);

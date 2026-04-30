@@ -5,6 +5,7 @@ import { resolveRoundMP } from './resolver.js';
 import type {
 	Card,
 	CardColor,
+	CardPlacementRow,
 	GamePlayerRow,
 	MPGroupResult,
 	MPRoundSnapshot,
@@ -26,6 +27,7 @@ export interface PlayerState {
 	roundWins: number;
 	placedCount: number;
 	isReady: boolean;
+	scoutDone: boolean;
 }
 
 const SESSION_KEY = 'madripoor_session';
@@ -76,6 +78,10 @@ export const mp = $state({
 
 	// Hard Worker CHA escalation levels: "cardId:tileId" -> current CHA
 	hardWorkerLevels: {} as Record<string, number>,
+
+	// Scout phase tracking
+	scoutingPlayerIds: [] as string[],
+	latestScoutSwap: null as { scoutTileId: number; targetTileId: number; actorUserId: string; actorName: string } | null,
 
 	error: null as string | null
 });
@@ -224,7 +230,8 @@ function applyPlayers(players: GamePlayerRow[]): void {
 		playerIndex: p.player_index,
 		roundWins: p.round_wins,
 		placedCount: p.placed_count,
-		isReady: p.is_ready
+		isReady: p.is_ready,
+		scoutDone: p.scout_done ?? false
 	}));
 
 	const me = players.find((p) => p.user_id === mp.myUserId);
@@ -291,6 +298,7 @@ function handlePlayersChange(payload: { new: Record<string, unknown> }): void {
 		mp.players[idx].placedCount = row.placed_count;
 		mp.players[idx].roundWins = row.round_wins;
 		mp.players[idx].displayName = row.display_name;
+		mp.players[idx].scoutDone = row.scout_done ?? false;
 	} else {
 		mp.players = [
 			...mp.players,
@@ -300,16 +308,36 @@ function handlePlayersChange(payload: { new: Record<string, unknown> }): void {
 				playerIndex: row.player_index,
 				roundWins: row.round_wins,
 				placedCount: row.placed_count,
-				isReady: row.is_ready
+				isReady: row.is_ready,
+				scoutDone: row.scout_done ?? false
 			}
 		];
 	}
 
-	// Host: check if all players ready → trigger reveal
+	// Host: check if all players ready → trigger scouting phase
 	if (isHost() && mp.phase === 'placement' && mp.gameId) {
 		const allReady = mp.players.length === mp.maxPlayers && mp.players.every((p) => p.isReady);
 		if (allReady && !_revealTriggered) {
 			_revealTriggered = true;
+			db.updatePhase(mp.gameId, 'scouting').catch(console.error);
+		}
+	}
+
+	// Host: scout phase monitoring
+	if (isHost() && mp.phase === 'scouting' && mp.gameId) {
+		// Detect new swap for toast notification
+		if (row.scout_swap && row.scout_done) {
+			const actor = mp.players.find((p) => p.userId === row.user_id);
+			if (actor) {
+				mp.latestScoutSwap = { ...row.scout_swap, actorName: actor.displayName };
+			}
+		}
+		// Check if all scouts are done
+		const allScoutsDone = mp.scoutingPlayerIds.length > 0 && mp.scoutingPlayerIds.every((uid) => {
+			const p = mp.players.find((p) => p.userId === uid);
+			return p?.scoutDone === true;
+		});
+		if (allScoutsDone) {
 			db.updatePhase(mp.gameId, 'revealing').catch(console.error);
 		}
 	}
@@ -399,6 +427,22 @@ function onPhaseTransition(from: MultiplayerPhase, to: MultiplayerPhase): void {
 		runResolution().catch(console.error);
 	}
 
+	if (to === 'scouting' && isHost() && mp.gameId) {
+		const gameId = mp.gameId;
+		(async () => {
+			// Check for placed Scouts
+			const rows = await db.getCardPlacements(gameId, mp.roundNumber);
+			const scoutPlayerIds = [...new Set(
+				rows.filter((r) => r.card_json.ability === 'scout').map((r) => r.user_id)
+			)];
+			mp.scoutingPlayerIds = scoutPlayerIds;
+			if (scoutPlayerIds.length === 0) {
+				db.updatePhase(gameId, 'revealing').catch(console.error);
+			}
+			// else: wait for scout_done signals from each scout holder via handlePlayersChange
+		})().catch(console.error);
+	}
+
 	if (to === 'placement' && mp.gameId) {
 		_revealTriggered = false;
 		mp.myPlacements = {};
@@ -407,10 +451,13 @@ function onPhaseTransition(from: MultiplayerPhase, to: MultiplayerPhase): void {
 		mp.gerrySelectedTileId = null;
 		mp.tileResults = [];
 		mp.groupResults = [];
+		mp.scoutingPlayerIds = [];
+		mp.latestScoutSwap = null;
 		// Reset ready/placed counts for everyone
 		for (const p of mp.players) {
 			p.isReady = false;
 			p.placedCount = 0;
+			p.scoutDone = false;
 		}
 		// Load hand from DB (persisted from previous round's card buying, or fresh on round 1)
 		loadMyHand(mp.gameId, mp.myUserId!, mp.roundNumber).catch(console.error);
@@ -789,6 +836,27 @@ export async function passBuyTurn(): Promise<void> {
 	if (!mp.gameId || !mp.myUserId) return;
 	if (mp.buyingTurnUserId !== mp.myUserId) return;
 	await db.passBuyTurn(mp.gameId);
+}
+
+// ── Scout actions ──────────────────────────────────────────────────────────────
+
+export async function keepScout(): Promise<void> {
+	if (!mp.gameId) return;
+	await db.setScoutDone(mp.gameId);
+}
+
+export async function swapScout(scoutTileId: number, targetTileId: number): Promise<void> {
+	if (!mp.gameId) return;
+	await db.submitScoutSwap(mp.gameId, mp.roundNumber, scoutTileId, targetTileId);
+	// Reload own placements since they changed in DB
+	const rows = await db.getCardPlacements(mp.gameId, mp.roundNumber);
+	const myRows = rows.filter((r) => r.user_id === mp.myUserId);
+	mp.myPlacements = Object.fromEntries(myRows.map((r) => [r.tile_id, r.card_json]));
+}
+
+export async function peekScout(tileId: number): Promise<CardPlacementRow[]> {
+	if (!mp.gameId) return [];
+	return db.peekScoutTile(mp.gameId, mp.roundNumber, tileId);
 }
 
 export function cleanup(): void {
