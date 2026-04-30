@@ -38,7 +38,9 @@ export const game: GameState = $state({
 	drawPile: [],
 	cardStore: [null, null, null, null],
 	hardWorkerLevels: {},
-	mrPopularPending: null
+	mrPopularPending: null,
+	humanSwapsUsed: 0,
+	humanMaxSwaps: 1
 });
 
 export function soloPartyLeaderPenalty(): boolean {
@@ -62,6 +64,8 @@ export function resetGame(): void {
 	game.cardStore = [null, null, null, null];
 	game.hardWorkerLevels = {};
 	game.mrPopularPending = null;
+	game.humanSwapsUsed = 0;
+	game.humanMaxSwaps = 1;
 }
 
 export function selectCard(card: Card): void {
@@ -166,14 +170,102 @@ export function resolve(): void {
 	game.phase = game.roundWins[roundWinner] >= 3 ? 'game_over' : 'round_end';
 }
 
-export function startNextRound(): void {
+export function cpuBuyCard(
+	hand: Card[],
+	store: (Card | null)[]
+): { storePos: number; handCardId: string } | null {
+	// Score a card: abilities > CHA3 generic > CHA2 generic > CHA1 generic
+	function cardScore(c: Card): number {
+		if (c.ability !== 'none') return 100 + c.charisma;
+		return c.charisma;
+	}
+
+	// Find best store card
+	let bestStorePos = -1;
+	let bestStoreScore = -1;
+	for (let i = 0; i < store.length; i++) {
+		const c = store[i];
+		if (!c) continue;
+		const score = cardScore(c);
+		if (score > bestStoreScore) {
+			bestStoreScore = score;
+			bestStorePos = i;
+		}
+	}
+	if (bestStorePos === -1) return null;
+
+	// Find worst hand card to discard (lowest score)
+	let worstHandCard: Card | null = null;
+	let worstScore = Infinity;
+	for (const c of hand) {
+		const score = cardScore(c);
+		if (score < worstScore) {
+			worstScore = score;
+			worstHandCard = c;
+		}
+	}
+	if (!worstHandCard) return null;
+
+	// Only buy if the store card is strictly better than the worst hand card
+	if (bestStoreScore <= worstScore) return null;
+
+	return { storePos: bestStorePos, handCardId: worstHandCard.id };
+}
+
+export function startBuying(): void {
+	const maxSwaps = game.currentRound.winner === 'human' ? 1 : 2;
+	game.humanSwapsUsed = 0;
+	game.humanMaxSwaps = maxSwaps;
+
+	// Deal up to 4 cards from draw pile into store
+	const newDrawPile = [...game.drawPile];
+	const newStore: (Card | null)[] = [null, null, null, null];
+	for (let i = 0; i < 4; i++) {
+		newStore[i] = newDrawPile.shift() ?? null;
+	}
+	game.drawPile = newDrawPile;
+	game.cardStore = newStore;
+	game.phase = 'card_buying';
+}
+
+export function buyCardSolo(storePosition: number, handCardId: string): void {
+	if (game.humanSwapsUsed >= game.humanMaxSwaps) return;
+	const storeCard = game.cardStore[storePosition];
+	if (!storeCard) return;
+	const handCard = game.humanHand.find((c) => c.id === handCardId);
+	if (!handCard) return;
+
+	// Swap
+	game.humanHand = game.humanHand.map((c) => (c.id === handCardId ? storeCard : c));
+	const newStore = [...game.cardStore];
+	newStore[storePosition] = handCard;
+	game.cardStore = newStore;
+	game.humanSwapsUsed++;
+}
+
+export function confirmSoloBuying(): void {
+	// CPU auto-buys
+	const cpuMaxSwaps = game.currentRound.winner === 'cpu' ? 1 : 2;
+	let cpuSwapsUsed = 0;
+	while (cpuSwapsUsed < cpuMaxSwaps) {
+		const buy = cpuBuyCard(game.cpuHand, game.cardStore);
+		if (!buy) break;
+		const { storePos, handCardId } = buy;
+		const storeCard = game.cardStore[storePos]!;
+		const handCard = game.cpuHand.find((c) => c.id === handCardId)!;
+		game.cpuHand = game.cpuHand.map((c) => (c.id === handCardId ? storeCard : c));
+		const newStore = [...game.cardStore];
+		newStore[storePos] = handCard;
+		game.cardStore = newStore;
+		cpuSwapsUsed++;
+	}
+
+	// Proceed to next round — keep existing hands (don't rebuild them)
 	const prevGroups = game.currentRound.groups.map((g) => ({ ...g, tileIds: [...g.tileIds] }));
 	game.history.push(game.currentRound);
 	const nextRoundNum = game.currentRound.roundNumber + 1;
 	const previousWinner = game.currentRound.winner;
 
-	game.humanHand = buildHand('human');
-	game.cpuHand = buildHand('cpu');
 	game.selectedCard = null;
 	game.gerrySelectedTileId = null;
 	game.currentRound = freshRound(nextRoundNum);
@@ -186,6 +278,10 @@ export function startNextRound(): void {
 		game.currentRound.groups = prevGroups;
 		game.phase = 'gerrymandering';
 	}
+}
+
+export function startNextRound(): void {
+	startBuying();
 }
 
 export function gerryClickTile(tileId: number): void {

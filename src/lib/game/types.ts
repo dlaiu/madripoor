@@ -88,6 +88,8 @@ export interface GameState {
 	cardStore: (Card | null)[];
 	hardWorkerLevels: Record<string, number>;
 	mrPopularPending: { tileId: number; card: Card } | null;
+	humanSwapsUsed: number;
+	humanMaxSwaps: number;
 }
 
 // ── Multiplayer types ──────────────────────────────────────────────────────────

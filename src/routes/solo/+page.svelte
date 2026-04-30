@@ -5,6 +5,7 @@
 	import GerrymanderingPanel from '$lib/components/GerrymanderingPanel.svelte';
 	import RoundSummary from '$lib/components/RoundSummary.svelte';
 	import MrPopularColorModal from '$lib/components/MrPopularColorModal.svelte';
+	import SoloBuyingPanel from '$lib/components/SoloBuyingPanel.svelte';
 	import { game, placeCard, unplaceCard, startReveal, gerryClickTile, confirmMrPopularColorSolo, cancelMrPopularPlacementSolo, soloPartyLeaderPenalty } from '$lib/game/gameState.svelte.js';
 	import type { TileColor } from '$lib/board/hex.js';
 
@@ -33,7 +34,7 @@
 		game.phase === 'round_end' ||
 		game.phase === 'game_over'
 	);
-	const hasOverlay = $derived(game.phase !== 'placement');
+	const hasOverlay = $derived(game.phase !== 'placement' && game.phase !== 'card_buying');
 
 	const hintText = $derived(() => {
 		if (game.selectedCard) return 'Click a tile to place — or click a placed tile to swap';
@@ -112,6 +113,9 @@
 	<PhaseOverlay />
 	{#if game.phase === 'gerrymandering'}
 		<GerrymanderingPanel />
+	{/if}
+	{#if game.phase === 'card_buying'}
+		<SoloBuyingPanel />
 	{/if}
 	<RoundSummary />
 </main>
