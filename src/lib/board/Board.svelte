@@ -11,6 +11,7 @@
 		coloredTiles?: Record<number, TileColor>;
 		size?: number;
 		placements?: Record<number, Card>;
+		placedCardCharismaOverrides?: Record<number, number>;
 		results?: TileResult[];
 		mpResults?: MPTileResult[];
 		mpGroupResults?: MPGroupResult[];
@@ -26,6 +27,7 @@
 		coloredTiles = {},
 		size = 50,
 		placements,
+		placedCardCharismaOverrides = {},
 		results,
 		mpResults,
 		mpGroupResults,
@@ -107,6 +109,7 @@
 			color={coloredTiles[tile.id]}
 			placedCardColor={placements?.[tile.id]?.color}
 			placedCardCharisma={placements?.[tile.id]?.charisma}
+			placedCardCharismaOverride={placedCardCharismaOverrides[tile.id] ?? null}
 			placedCardIsLeader={placements?.[tile.id]?.type === 'party_leader'}
 			isSelectable={hasSelectedCard && !(tile.id in (placements ?? {}))}
 			isSwappable={hasSelectedCard && tile.id in (placements ?? {})}

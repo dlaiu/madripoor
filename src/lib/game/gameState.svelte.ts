@@ -41,6 +41,14 @@ export const game: GameState = $state({
 	mrPopularPending: null
 });
 
+export function soloPartyLeaderPenalty(): boolean {
+	return (
+		[...game.humanHand, ...Object.values(game.currentRound.humanPlacements)].filter(
+			(c) => c.type === 'party_leader'
+		).length >= 2
+	);
+}
+
 export function resetGame(): void {
 	game.phase = 'placement';
 	game.roundWins = { human: 0, cpu: 0 };

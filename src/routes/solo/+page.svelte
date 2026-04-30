@@ -5,7 +5,7 @@
 	import GerrymanderingPanel from '$lib/components/GerrymanderingPanel.svelte';
 	import RoundSummary from '$lib/components/RoundSummary.svelte';
 	import MrPopularColorModal from '$lib/components/MrPopularColorModal.svelte';
-	import { game, placeCard, unplaceCard, startReveal, gerryClickTile, confirmMrPopularColorSolo, cancelMrPopularPlacementSolo } from '$lib/game/gameState.svelte.js';
+	import { game, placeCard, unplaceCard, startReveal, gerryClickTile, confirmMrPopularColorSolo, cancelMrPopularPlacementSolo, soloPartyLeaderPenalty } from '$lib/game/gameState.svelte.js';
 	import type { TileColor } from '$lib/board/hex.js';
 
 	const coloredTiles: Record<number, TileColor> = {
@@ -53,6 +53,18 @@
 		game.phase === 'gerrymandering' ? handleGerryTileClick :
 		undefined
 	);
+
+	// During placement, override displayed CHA to 1 for placed Party Leaders if penalty applies
+	const boardCharismaOverrides = $derived.by(() => {
+		if (game.phase !== 'placement' || !soloPartyLeaderPenalty()) return {};
+		const overrides: Record<number, number> = {};
+		for (const [tileId, card] of Object.entries(game.currentRound.humanPlacements)) {
+			if (card.type === 'party_leader') {
+				overrides[Number(tileId)] = 1;
+			}
+		}
+		return overrides;
+	});
 </script>
 
 <main class:has-overlay={hasOverlay}>
@@ -84,6 +96,7 @@
 	<Board
 		{coloredTiles}
 		placements={game.currentRound.humanPlacements}
+		placedCardCharismaOverrides={boardCharismaOverrides}
 		results={showResults ? game.currentRound.results : undefined}
 		hasSelectedCard={game.phase === 'placement' && game.selectedCard !== null}
 		groups={game.currentRound.groups}

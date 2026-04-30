@@ -106,6 +106,14 @@ export function myRoundWins(): number {
 	return myState()?.roundWins ?? 0;
 }
 
+// Party Leader penalty visibility: ≥2 PLs in hand + placed → display CHA1
+export function myPartyLeaderPenalty(): boolean {
+	return (
+		[...mp.myHand, ...Object.values(mp.myPlacements)].filter((c) => c.type === 'party_leader')
+			.length >= 2
+	);
+}
+
 // ── Session persistence ────────────────────────────────────────────────────────
 
 export function saveSession(gameId: string, roomCode: string): void {

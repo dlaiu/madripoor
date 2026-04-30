@@ -21,7 +21,8 @@
 		myState,
 		cleanup,
 		confirmMrPopularColor,
-		cancelMrPopularPlacement
+		cancelMrPopularPlacement,
+		myPartyLeaderPenalty
 	} from '$lib/game/multiplayerStore.svelte.js';
 	import type { PageData } from './$types.js';
 
@@ -81,6 +82,18 @@
 			? handleTileClick
 			: undefined
 	);
+
+	// During placement, override displayed CHA to 1 for placed Party Leaders if penalty applies
+	const boardCharismaOverrides = $derived.by(() => {
+		if (mp.phase !== 'placement' || !myPartyLeaderPenalty()) return {};
+		const overrides: Record<number, number> = {};
+		for (const [tileId, card] of Object.entries(mp.myPlacements)) {
+			if (card.type === 'party_leader') {
+				overrides[Number(tileId)] = 1;
+			}
+		}
+		return overrides;
+	});
 </script>
 
 {#if !initialized}
@@ -139,6 +152,7 @@
 		<Board
 			{coloredTiles}
 			placements={mp.myPlacements}
+			placedCardCharismaOverrides={boardCharismaOverrides}
 			mpResults={showResults ? mp.tileResults : undefined}
 			mpGroupResults={showResults ? mp.groupResults : undefined}
 			myUserId={mp.myUserId ?? undefined}

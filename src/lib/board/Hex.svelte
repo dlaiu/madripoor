@@ -11,6 +11,7 @@
 		color?: TileColor;
 		placedCardColor?: TileColor;
 		placedCardCharisma?: 1 | 2 | 3 | 4;
+		placedCardCharismaOverride?: number | null;
 		placedCardIsLeader?: boolean;
 		isSelectable?: boolean;
 		isSwappable?: boolean;
@@ -26,7 +27,7 @@
 
 	let {
 		id, cx, cy, size, color,
-		placedCardColor, placedCardCharisma, placedCardIsLeader = false,
+		placedCardColor, placedCardCharisma, placedCardCharismaOverride = null, placedCardIsLeader = false,
 		isSelectable = false, isSwappable = false,
 		result,
 		groupIndex = -1, groupColor,
@@ -34,6 +35,10 @@
 		onTileClick,
 		mpResultWinColor
 	}: Props = $props();
+
+	const displayCharisma = $derived(
+		placedCardCharismaOverride !== null ? placedCardCharismaOverride : placedCardCharisma
+	);
 
 	const fill = $derived(color ? TILE_COLORS[color] : DEFAULT_FILL);
 	const points = $derived(hexVertices(cx, cy, size));
@@ -128,7 +133,7 @@
 				font-weight="700"
 				fill="#1a1a1a"
 				pointer-events="none"
-			>{placedCardCharisma}</text>
+			>{displayCharisma}</text>
 		{/if}
 
 		<!-- Party Leader badge -->
