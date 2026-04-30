@@ -5,9 +5,10 @@
 		card: Card;
 		isSelected: boolean;
 		onClick: () => void;
+		displayChaOverride?: number | null;
 	}
 
-	const { card, isSelected, onClick }: Props = $props();
+	const { card, isSelected, onClick, displayChaOverride = null }: Props = $props();
 
 	const COLOR_BG: Record<string, string> = {
 		red: '#fee2e2',
@@ -30,7 +31,7 @@
 	onclick={onClick}
 	aria-pressed={isSelected}
 >
-	<span class="cha">{card.charisma}</span>
+	<span class="cha">{displayChaOverride !== null ? displayChaOverride : card.charisma}</span>
 	<span class="label">{card.type === 'party_leader' ? 'Leader' : card.color}</span>
 </button>
 

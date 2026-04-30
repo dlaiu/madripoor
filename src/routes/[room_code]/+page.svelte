@@ -15,7 +15,8 @@
 		setReady,
 		isGerrymanderer,
 		gerryClickTile,
-		cleanup
+		cleanup,
+		myPartyLeaderPenalty
 	} from '$lib/game/multiplayerStore.svelte.js';
 	import type { PageData } from './$types.js';
 
@@ -74,6 +75,18 @@
 			? handleTileClick
 			: undefined
 	);
+
+	// During placement, override displayed CHA to 1 for placed Party Leaders if penalty applies
+	const boardCharismaOverrides = $derived.by(() => {
+		if (mp.phase !== 'placement' || !myPartyLeaderPenalty()) return {};
+		const overrides: Record<number, number> = {};
+		for (const [tileId, card] of Object.entries(mp.myPlacements)) {
+			if (card.type === 'party_leader') {
+				overrides[Number(tileId)] = 1;
+			}
+		}
+		return overrides;
+	});
 </script>
 
 {#if !initialized}
@@ -130,6 +143,7 @@
 		<Board
 			{coloredTiles}
 			placements={mp.myPlacements}
+			placedCardCharismaOverrides={boardCharismaOverrides}
 			results={showResults ? mp.tileResults : undefined}
 			hasSelectedCard={mp.phase === 'placement' && mp.selectedCard !== null}
 			groups={mp.groups}
