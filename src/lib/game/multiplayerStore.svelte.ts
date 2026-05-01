@@ -194,8 +194,8 @@ export async function initMultiplayer(
 		await loadMyHand(gameId, myUserId, gameRow.round_number);
 	}
 
-	// Restore placements on page-refresh mid-placement
-	if (mp.phase === 'placement') {
+	// Restore own placements on page-refresh during placement or scouting
+	if (mp.phase === 'placement' || mp.phase === 'scouting') {
 		const placementRows = await db.getCardPlacements(gameId, gameRow.round_number);
 		const mine = placementRows.filter((r) => r.user_id === myUserId);
 		if (mine.length > 0) {
@@ -332,12 +332,10 @@ function handlePlayersChange(payload: { new: Record<string, unknown> }): void {
 				mp.latestScoutSwap = { ...row.scout_swap, actorName: actor.displayName };
 			}
 		}
-		// Check if all scouts are done
-		const allScoutsDone = mp.scoutingPlayerIds.length > 0 && mp.scoutingPlayerIds.every((uid) => {
-			const p = mp.players.find((p) => p.userId === uid);
-			return p?.scoutDone === true;
-		});
-		if (allScoutsDone) {
+		// Advance when every player has marked scout_done (non-scouts auto-mark themselves done)
+		const allDone = mp.players.length === mp.maxPlayers &&
+			mp.players.every((p) => p.scoutDone);
+		if (allDone) {
 			db.updatePhase(mp.gameId, 'revealing').catch(console.error);
 		}
 	}
@@ -427,20 +425,14 @@ function onPhaseTransition(from: MultiplayerPhase, to: MultiplayerPhase): void {
 		runResolution().catch(console.error);
 	}
 
-	if (to === 'scouting' && isHost() && mp.gameId) {
-		const gameId = mp.gameId;
-		(async () => {
-			// Check for placed Scouts
-			const rows = await db.getCardPlacements(gameId, mp.roundNumber);
-			const scoutPlayerIds = [...new Set(
-				rows.filter((r) => r.card_json.ability === 'scout').map((r) => r.user_id)
-			)];
-			mp.scoutingPlayerIds = scoutPlayerIds;
-			if (scoutPlayerIds.length === 0) {
-				db.updatePhase(gameId, 'revealing').catch(console.error);
-			}
-			// else: wait for scout_done signals from each scout holder via handlePlayersChange
-		})().catch(console.error);
+	if (to === 'scouting' && mp.gameId) {
+		// Each player self-determines scout status from their own placements.
+		// Non-scout holders immediately mark themselves done so the host can detect
+		// all-done without needing to read opponents' card_placements (blocked by RLS).
+		const hasScout = Object.values(mp.myPlacements).some((c) => c.ability === 'scout');
+		if (!hasScout && mp.gameId) {
+			db.setScoutDone(mp.gameId).catch(console.error);
+		}
 	}
 
 	if (to === 'placement' && mp.gameId) {

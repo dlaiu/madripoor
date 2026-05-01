@@ -86,6 +86,9 @@
 			: undefined
 	);
 
+	// True if this player has a Scout card placed — determines scouting panel visibility
+	const iAmScout = $derived(Object.values(mp.myPlacements).some((c) => c.ability === 'scout'));
+
 	// During placement, override displayed CHA to 1 for placed Party Leaders if penalty applies
 	const boardCharismaOverrides = $derived.by(() => {
 		if (mp.phase !== 'placement' || !myPartyLeaderPenalty()) return {};
@@ -134,7 +137,7 @@
 				</div>
 			{:else if mp.phase === 'scouting'}
 				<div class="placement-bar">
-					{#if mp.scoutingPlayerIds.includes(mp.myUserId ?? '')}
+					{#if iAmScout}
 						<span class="phase-hint">Scout phase — make your decision below</span>
 					{:else}
 						<span class="phase-hint">Scouting in progress…</span>
@@ -179,7 +182,7 @@
 		{/if}
 
 		{#if mp.phase === 'scouting'}
-			{#if mp.scoutingPlayerIds.includes(mp.myUserId ?? '')}
+			{#if iAmScout}
 				<ScoutingPanel />
 			{:else}
 				<div class="waiting-overlay">

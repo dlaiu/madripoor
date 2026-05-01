@@ -21,6 +21,21 @@
 		blue: '#3b82f6',
 		green: '#22c55e'
 	};
+
+	const ABILITY_LABELS: Record<string, string> = {
+		scout: 'Scout',
+		hometown: 'Hometown',
+		pollster: 'Pollster',
+		hard_worker: 'Hard Wkr',
+		independent: 'Indep.',
+		mr_popular: 'Mr. Pop.',
+		disadvantage: 'Disadv.',
+		coalition: 'Coalition',
+		underdog: 'Underdog'
+	};
+
+	const displayCha = $derived(displayChaOverride !== null ? displayChaOverride : card.charisma);
+	const abilityLabel = $derived(card.ability !== 'none' ? (ABILITY_LABELS[card.ability] ?? card.ability) : null);
 </script>
 
 <button
@@ -31,8 +46,14 @@
 	onclick={onClick}
 	aria-pressed={isSelected}
 >
-	<span class="cha">{displayChaOverride !== null ? displayChaOverride : card.charisma}</span>
-	<span class="label">{card.type === 'party_leader' ? 'Leader' : card.color}</span>
+	<span class="cha">{displayCha}</span>
+	{#if card.type === 'party_leader'}
+		<span class="label leader">★ Leader</span>
+	{:else if abilityLabel}
+		<span class="label ability">{abilityLabel}</span>
+	{:else}
+		<span class="label">{card.color}</span>
+	{/if}
 </button>
 
 <style>
@@ -72,5 +93,17 @@
 		letter-spacing: 0.05em;
 		color: #444;
 		margin-top: 2px;
+		text-align: center;
+		padding: 0 2px;
+	}
+
+	.label.ability {
+		color: #7c3aed;
+		font-weight: 600;
+	}
+
+	.label.leader {
+		color: #7c3aed;
+		font-weight: 600;
 	}
 </style>
