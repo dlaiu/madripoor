@@ -289,6 +289,24 @@ export async function writeRoundResults(
 	);
 }
 
+export async function getRoundResults(
+	gameId: string,
+	roundNumber: number
+): Promise<{ tileResults: MPTileResult[]; groupResults: MPGroupResult[]; playerTileWins: Record<string, number> } | null> {
+	const res = await supabase
+		.from('round_results')
+		.select('tile_results, group_results, player_tile_wins')
+		.eq('game_id', gameId)
+		.eq('round_number', roundNumber)
+		.single();
+	if (!res.data) return null;
+	return {
+		tileResults: res.data.tile_results as MPTileResult[],
+		groupResults: res.data.group_results as MPGroupResult[],
+		playerTileWins: res.data.player_tile_wins as Record<string, number>
+	};
+}
+
 export async function updatePlayerRoundWins(
 	gameId: string,
 	userId: string,

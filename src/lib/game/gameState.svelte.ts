@@ -35,7 +35,7 @@ export const game: GameState = $state({
 	currentRound: freshRound(1),
 	history: [],
 	gerrySelectedTileId: null,
-	drawPile: [],
+	drawPile: buildDrawPile(2),
 	cardStore: [null, null, null, null],
 	hardWorkerLevels: {},
 	mrPopularPending: null,

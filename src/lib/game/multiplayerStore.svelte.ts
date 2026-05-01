@@ -473,6 +473,21 @@ function onPhaseTransition(from: MultiplayerPhase, to: MultiplayerPhase): void {
 		}
 	}
 
+	// If resolution results haven't arrived yet (Realtime race: phase change before round_results INSERT),
+	// fetch them from DB so the scoreboard isn't blank.
+	if ((to === 'resolution' || to === 'round_end' || to === 'game_over') && mp.gameId) {
+		if (mp.tileResults.length === 0) {
+			const gameId = mp.gameId;
+			const roundNumber = mp.roundNumber;
+			db.getRoundResults(gameId, roundNumber).then((r) => {
+				if (r && mp.tileResults.length === 0) {
+					mp.tileResults = r.tileResults;
+					mp.groupResults = r.groupResults;
+				}
+			}).catch(console.error);
+		}
+	}
+
 	// Reload hand from DB (hand_json was not updated during placement, so it still has the full hand)
 	if (to === 'card_buying' && mp.gameId && mp.myUserId) {
 		loadMyHand(mp.gameId, mp.myUserId, mp.roundNumber).catch(console.error);
@@ -775,14 +790,17 @@ export async function clearGroups(): Promise<void> {
 export async function advanceToNextRound(): Promise<void> {
 	if (!mp.gameId || !isHost()) return;
 
-	// Derive round winner from current results
-	const playerTileWins: Record<string, number> = {};
-	for (const tr of mp.tileResults) {
-		playerTileWins[tr.winner] = (playerTileWins[tr.winner] ?? 0) + 1;
+	// Read authoritative tile wins from DB — avoids relying on local mp.tileResults
+	// which may be empty if the Realtime round_results INSERT arrived after the phase change.
+	const dbResults = await db.getRoundResults(mp.gameId, mp.roundNumber);
+	const playerTileWins = dbResults?.playerTileWins ?? {};
+
+	// Also sync local state if it was empty (race condition recovery)
+	if (mp.tileResults.length === 0 && dbResults) {
+		mp.tileResults = dbResults.tileResults;
+		mp.groupResults = dbResults.groupResults;
 	}
-	for (const gr of mp.groupResults) {
-		playerTileWins[gr.winner] = (playerTileWins[gr.winner] ?? 0) + gr.tileIds.length;
-	}
+
 	const winnerUserId = determineRoundWinner(playerTileWins);
 
 	const winnerPlayer = mp.players.find((p) => p.userId === winnerUserId);
