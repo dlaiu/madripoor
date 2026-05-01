@@ -431,7 +431,20 @@ function onPhaseTransition(from: MultiplayerPhase, to: MultiplayerPhase): void {
 		// all-done without needing to read opponents' card_placements (blocked by RLS).
 		const hasScout = Object.values(mp.myPlacements).some((c) => c.ability === 'scout');
 		if (!hasScout && mp.gameId) {
-			db.setScoutDone(mp.gameId).catch(console.error);
+			const gameId = mp.gameId;
+			db.setScoutDone(gameId)
+				.then(() => {
+					// Host: after marking self done, poll DB directly as a fallback
+					// in case Realtime events were missed for other players
+					if (!isHost() || mp.phase !== 'scouting' || mp.gameId !== gameId) return;
+					return db.getGamePlayers(gameId).then((players) => {
+						if (mp.phase !== 'scouting' || mp.gameId !== gameId) return;
+						const allDone = players.length >= mp.maxPlayers &&
+							players.every((p) => p.scout_done ?? false);
+						if (allDone) db.updatePhase(gameId, 'revealing').catch(console.error);
+					});
+				})
+				.catch(console.error);
 		}
 	}
 
@@ -857,11 +870,18 @@ export async function keepScout(): Promise<void> {
 
 export async function swapScout(scoutTileId: number, targetTileId: number): Promise<void> {
 	if (!mp.gameId) return;
-	await db.submitScoutSwap(mp.gameId, mp.roundNumber, scoutTileId, targetTileId);
-	// Reload own placements since they changed in DB
-	const rows = await db.getCardPlacements(mp.gameId, mp.roundNumber);
-	const myRows = rows.filter((r) => r.user_id === mp.myUserId);
-	mp.myPlacements = Object.fromEntries(myRows.map((r) => [r.tile_id, r.card_json]));
+	const gameId = mp.gameId;
+	try {
+		await db.submitScoutSwap(gameId, mp.roundNumber, scoutTileId, targetTileId);
+		// Reload own placements since they changed in DB
+		const rows = await db.getCardPlacements(gameId, mp.roundNumber);
+		const myRows = rows.filter((r) => r.user_id === mp.myUserId);
+		mp.myPlacements = Object.fromEntries(myRows.map((r) => [r.tile_id, r.card_json]));
+	} catch (e) {
+		console.error('Scout swap failed, falling back to keep:', e);
+		// submitScoutSwap may not have set scout_done — ensure it's set so the round can progress
+		await db.setScoutDone(gameId);
+	}
 }
 
 export async function peekScout(tileId: number): Promise<CardPlacementRow[]> {

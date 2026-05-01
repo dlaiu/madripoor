@@ -19,11 +19,16 @@
 	async function loadPeek() {
 		if (!scoutTileId) return;
 		loading = true;
-		const rows = await peekScout(scoutTileId);
-		peekedCards = rows
-			.filter((r) => r.user_id !== mp.myUserId)
-			.map((r) => ({ userId: r.user_id, card: r.card_json, tileId: r.tile_id }));
-		loading = false;
+		try {
+			const rows = await peekScout(scoutTileId);
+			peekedCards = rows
+				.filter((r) => r.user_id !== mp.myUserId)
+				.map((r) => ({ userId: r.user_id, card: r.card_json, tileId: r.tile_id }));
+		} catch {
+			peekedCards = [];
+		} finally {
+			loading = false;
+		}
 	}
 
 	// Load peek on mount
