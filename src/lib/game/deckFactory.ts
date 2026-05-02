@@ -40,8 +40,8 @@ const TEMPLATE: Array<{ color: CardColor; charisma: 1 | 2 | 3; type: Card['type'
 	{ color: 'green', charisma: 3, type: 'party_leader', ability: 'none' },
 ];
 
-export function buildHand(owner: PlayerKey): Card[] {
-	const prefix = owner === 'human' ? 'h' : 'c';
+export function buildHand(owner: PlayerKey, idPrefix?: string): Card[] {
+	const prefix = idPrefix ?? (owner === 'human' ? 'h' : 'c');
 	return TEMPLATE.map((t, i) => ({
 		id: `${prefix}-${t.color}-cha${t.charisma}-${i}`,
 		owner,
@@ -169,6 +169,52 @@ export function buildStartingPool(playerCount: 2 | 3 | 4): { nonPLPool: Card[]; 
 	}
 
 	return { nonPLPool: [...abilityCards, ...generics], partyLeaders };
+}
+
+// Build hands + draw pile for a multiplayer game start.
+// Hands: 5 CHA1 + 7 CHA2 + 2 CHA3 + 1 PL per player, owner = 'human', IDs prefixed p{i}-.
+// Draw pile: DRAW_PILE_TEMPLATE non-PL cards + leftover PLs (not dealt), then shuffled.
+export function buildGameStart(playerCount: 2 | 3 | 4): { hands: Card[][]; drawPile: Card[] } {
+	const { nonPLPool, partyLeaders } = buildStartingPool(playerCount);
+
+	const shuffledPLs = shuffleCards(partyLeaders);
+	const playerPLs = shuffledPLs.slice(0, playerCount);
+	const leftoverPLs = shuffledPLs.slice(playerCount);
+
+	const cha1 = shuffleCards(nonPLPool.filter((c) => c.charisma === 1));
+	const cha2 = shuffleCards(nonPLPool.filter((c) => c.charisma === 2));
+	const cha3 = shuffleCards(nonPLPool.filter((c) => c.charisma === 3));
+
+	const hands: Card[][] = Array.from({ length: playerCount }, () => []);
+	for (let p = 0; p < playerCount; p++) {
+		const nonPLCards: Card[] = [
+			...cha1.splice(0, 5),
+			...cha2.splice(0, 7),
+			...cha3.splice(0, 2)
+		];
+		const pl: Card = { ...playerPLs[p], owner: 'human' as PlayerKey, id: `p${p}-${playerPLs[p].id}` };
+		hands[p] = [
+			...nonPLCards.map((c) => ({
+				...c,
+				owner: 'human' as PlayerKey,
+				id: c.id.replace(/^sp-/, `p${p}-`)
+			})),
+			pl
+		];
+	}
+
+	const nonPLDrawCards: Card[] = DRAW_PILE_TEMPLATE.map((t) => ({
+		id: t.label,
+		owner: 'human' as PlayerKey,
+		color: (t.color ?? 'red') as CardColor,
+		charisma: t.charisma as 1 | 2 | 3 | 4,
+		type: t.type,
+		ability: t.ability
+	}));
+
+	const drawPile = shuffleCards([...nonPLDrawCards, ...leftoverPLs]);
+
+	return { hands, drawPile };
 }
 
 // Deal playerCount hands of 15 cards each from the starting pool.

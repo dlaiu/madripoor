@@ -61,6 +61,16 @@
 			: (mp.players.find(p => p.userId === gameWinnerId)?.displayName ?? 'Opponent')
 	);
 
+	const ABILITY_COLORS: Record<string, string> = {
+		hometown: '#15803d', independent: '#15803d',
+		pollster: '#1d4ed8',
+		disadvantage: '#dc2626',
+		coalition: '#7c3aed', party_leader: '#7c3aed',
+		underdog: '#d97706',
+		entrench: '#0d9488',
+		mr_popular: '#6b7280',
+	};
+
 	function scoreColor(userId: string): string {
 		if (userId === mp.myUserId) return '#16a34a';
 		const colors = ['#dc2626', '#7c3aed', '#d97706'];
@@ -79,6 +89,24 @@
 	}
 </script>
 
+{#snippet scoreDetail(s: import('$lib/game/types.js').MPPlayerScore)}
+	<span class="score-base">({s.card.charisma}×{s.roll})</span>
+	{#if s.bonuses?.rollType === 'pollster'}
+		<span class="ability-pill" style:background={ABILITY_COLORS.pollster}>★ Poll</span>
+	{/if}
+	{#if s.bonuses?.rollType === 'disadvantage'}
+		<span class="ability-pill" style:background={ABILITY_COLORS.disadvantage}>↓ Disadv</span>
+	{/if}
+	{#if s.bonuses?.ability}
+		<span class="ability-pill" style:background={ABILITY_COLORS[s.card.ability] ?? '#6b7280'}>
+			+{s.bonuses.ability} {s.bonuses.abilityLabel ?? ''}
+		</span>
+	{/if}
+	{#if s.bonuses?.entrench}
+		<span class="ability-pill" style:background={ABILITY_COLORS.entrench}>+2 Ent</span>
+	{/if}
+{/snippet}
+
 {#if show}
 	<aside class="panel">
 		{#if !showResults}
@@ -96,10 +124,11 @@
 								{@const s = r.scores[player.userId]}
 								{#if s}
 									<span class="score-entry" style:color={scoreColor(player.userId)}>
-										{s.score}<span class="score-detail"> ({s.card.charisma}×{s.roll})</span>
+										{s.score} {@render scoreDetail(s)}
 									</span>
 								{/if}
 							{/each}
+							{#if r.underdogActive}<span class="ability-pill" style:background={ABILITY_COLORS.underdog}>⚡ Underdog</span>{/if}
 						</div>
 						<span class="winner-dot" style:background={scoreColor(r.winner)}></span>
 					</div>
@@ -112,8 +141,12 @@
 						<div class="scores-col">
 							{#each mp.players as player}
 								{@const total = gr.totals[player.userId] ?? 0}
-								<span class="score-entry" style:color={scoreColor(player.userId)}>{total}</span>
+								{@const ent = gr.groupEntrenchBonuses?.[player.userId] ?? 0}
+								<span class="score-entry" style:color={scoreColor(player.userId)}>
+									{total}{#if ent}<span class="ability-pill" style:background={ABILITY_COLORS.entrench}>+2 Ent</span>{/if}
+								</span>
 							{/each}
+							{#if gr.underdogActive}<span class="ability-pill" style:background={ABILITY_COLORS.underdog}>⚡ Underdog</span>{/if}
 							<span class="group-tiles-label">tiles {gr.tileIds.join(',')}</span>
 						</div>
 						<span class="winner-dot" style:background={scoreColor(gr.winner)}></span>
@@ -127,7 +160,7 @@
 									{@const s = r.scores[player.userId]}
 									{#if s}
 										<span class="score-entry" style:color={scoreColor(player.userId)}>
-											{s.score}<span class="score-detail"> ({s.card.charisma}×{s.roll})</span>
+											{s.score} {@render scoreDetail(s)}
 										</span>
 									{/if}
 								{/each}
@@ -251,12 +284,27 @@
 	.score-entry {
 		font-weight: 700;
 		font-size: 0.85rem;
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 2px;
 	}
 
-	.score-detail {
+	.score-base {
 		font-weight: 400;
 		font-size: 0.7rem;
 		color: #9ca3af;
+	}
+
+	.ability-pill {
+		display: inline-block;
+		font-size: 0.58rem;
+		font-weight: 700;
+		color: white;
+		padding: 1px 5px;
+		border-radius: 10px;
+		white-space: nowrap;
+		vertical-align: middle;
 	}
 
 	.winner-dot {
@@ -280,7 +328,7 @@
 	.group-header.my-win  { background: #f0fdf4; }
 	.group-header.opp-win { background: #fef2f2; }
 
-	.group-tiles-label {
+.group-tiles-label {
 		font-size: 0.67rem;
 		color: #9ca3af;
 		font-weight: 400;

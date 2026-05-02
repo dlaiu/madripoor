@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { goto } from '$app/navigation';
-	import type { TileColor } from '$lib/board/hex.js';
+	import { COLORED_TILE_COLORS } from '$lib/board/hex.js';
 	import Board from '$lib/board/Board.svelte';
 	import Lobby from '$lib/components/Lobby.svelte';
 	import CardHandMP from '$lib/components/CardHandMP.svelte';
@@ -27,14 +27,13 @@
 		myPartyLeaderPenalty
 	} from '$lib/game/multiplayerStore.svelte.js';
 	import type { PageData } from './$types.js';
+	import type { MPTileResult } from '$lib/game/types.js';
+
+	type TileAbilityBadge = { label: string; color: string };
 
 	let { data }: { data: PageData } = $props();
 
-	const coloredTiles: Record<number, TileColor> = {
-		4: 'red',   11: 'red',
-		7: 'blue',  12: 'blue',
-		2: 'green',  9: 'green'
-	};
+	const coloredTiles = COLORED_TILE_COLORS;
 
 	let initialized = $state(false);
 
@@ -89,13 +88,57 @@
 	// True if this player has a Scout card placed — determines scouting panel visibility
 	const iAmScout = $derived(Object.values(mp.myPlacements).some((c) => c.ability === 'scout'));
 
-	// During placement, override displayed CHA to 1 for placed Party Leaders if penalty applies
+	const BADGE_COLORS: Record<string, string> = {
+		hometown: '#15803d', independent: '#15803d',
+		pollster: '#1d4ed8', disadvantage: '#dc2626',
+		coalition: '#7c3aed', party_leader: '#7c3aed',
+		underdog: '#d97706', entrench: '#0d9488',
+		mr_popular: '#6b7280',
+	};
+
+	const tileAbilityBadges = $derived.by((): Record<number, TileAbilityBadge[]> => {
+		if (!showResults) return {};
+		const out: Record<number, TileAbilityBadge[]> = {};
+
+		const addBadges = (tr: MPTileResult) => {
+			const badges: TileAbilityBadge[] = [];
+			if (tr.underdogActive) badges.push({ label: '⚡Und', color: BADGE_COLORS.underdog });
+			for (const s of Object.values(tr.scores)) {
+				if (s.bonuses?.rollType === 'pollster') badges.push({ label: '★Pol', color: BADGE_COLORS.pollster });
+				if (s.bonuses?.rollType === 'disadvantage') badges.push({ label: '↓Dis', color: BADGE_COLORS.disadvantage });
+				if (s.bonuses?.ability) badges.push({ label: `+2 ${s.bonuses.abilityLabel ?? ''}`, color: BADGE_COLORS[s.card.ability] ?? '#6b7280' });
+				if (s.bonuses?.entrench) badges.push({ label: '+2 Ent', color: BADGE_COLORS.entrench });
+			}
+			if (badges.length) out[tr.tileId] = badges;
+		};
+
+		for (const tr of mp.tileResults) addBadges(tr);
+		for (const gr of mp.groupResults) {
+			// Group entrenchment: annotate all tiles in the group (deduplicated to one badge)
+			const hasGroupEntrench = Object.values(gr.groupEntrenchBonuses ?? {}).some((b) => b > 0);
+			for (const tr of gr.perTile) addBadges(tr);
+			if (hasGroupEntrench) {
+				for (const tid of gr.tileIds) {
+					out[tid] = [...(out[tid] ?? []), { label: '+2 Ent', color: BADGE_COLORS.entrench }];
+				}
+			}
+		}
+		return out;
+	});
+
+	// During placement, override displayed CHA for Party Leader penalty and Hard Worker escalation
 	const boardCharismaOverrides = $derived.by(() => {
-		if (mp.phase !== 'placement' || !myPartyLeaderPenalty()) return {};
 		const overrides: Record<number, number> = {};
 		for (const [tileId, card] of Object.entries(mp.myPlacements)) {
-			if (card.type === 'party_leader') {
-				overrides[Number(tileId)] = 1;
+			const tid = Number(tileId);
+			// Party Leader penalty: show CHA1 when player owns ≥2 PLs
+			if (card.type === 'party_leader' && mp.phase === 'placement' && myPartyLeaderPenalty()) {
+				overrides[tid] = 1;
+			}
+			// Hard Worker escalation: show earned CHA level when placed on the same tile as last round
+			if (card.ability === 'hard_worker') {
+				const level = mp.hardWorkerLevels[`${card.id}:${tid}`];
+				if (level !== undefined) overrides[tid] = level;
 			}
 		}
 		return overrides;
@@ -175,6 +218,7 @@
 			gerrySelectedTileId={mp.phase === 'gerrymandering' ? mp.gerrySelectedTileId : null}
 			isGerrymandering={mp.phase === 'gerrymandering'}
 			onTileClick={tileClickHandler}
+			tileAbilityBadges={showResults ? tileAbilityBadges : undefined}
 		/>
 
 		{#if mp.phase === 'placement'}

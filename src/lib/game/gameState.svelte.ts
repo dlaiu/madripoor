@@ -8,7 +8,7 @@ import {
 } from './groups.js';
 import { cpuPlaceCards, resolveRound } from './resolver.js';
 import type { Card, CardColor, GameState, PlayerKey, RoundState } from './types.js';
-import { getNeighbors, TILES } from '../board/hex.js';
+import { COLORED_TILE_COLORS, getNeighbors, TILES } from '../board/hex.js';
 
 const TILE_IDS = TILES.map((t) => t.id);
 
@@ -40,8 +40,14 @@ export const game: GameState = $state({
 	hardWorkerLevels: {},
 	mrPopularPending: null,
 	humanSwapsUsed: 0,
-	humanMaxSwaps: 1
+	humanMaxSwaps: 1,
+	soloScoutState: null
 });
+
+export function soloHardWorkerEarnedCha(cardId: string): number | null {
+	const entry = Object.entries(game.hardWorkerLevels).find(([k]) => k.startsWith(cardId + ':'));
+	return entry ? entry[1] : null;
+}
 
 export function soloPartyLeaderPenalty(): boolean {
 	return (
@@ -66,6 +72,7 @@ export function resetGame(): void {
 	game.mrPopularPending = null;
 	game.humanSwapsUsed = 0;
 	game.humanMaxSwaps = 1;
+	game.soloScoutState = null;
 }
 
 export function selectCard(card: Card): void {
@@ -124,17 +131,65 @@ export function unplaceCard(tileId: number): void {
 	game.humanHand = [...game.humanHand, card];
 }
 
+export function startScouting(): void {
+	const cpuMap = cpuPlaceCards(game.cpuHand, TILE_IDS);
+	game.currentRound.cpuPlacements = Object.fromEntries(cpuMap);
+
+	const humanScoutEntry = Object.entries(game.currentRound.humanPlacements)
+		.find(([, c]) => c.ability === 'scout');
+
+	if (humanScoutEntry) {
+		const humanScoutTileId = Number(humanScoutEntry[0]);
+		const peekedCard = game.currentRound.cpuPlacements[humanScoutTileId];
+		if (peekedCard) {
+			game.soloScoutState = { humanScoutTileId, peekedCard, swapTargetTileId: null };
+			game.phase = 'scouting';
+			return;
+		}
+	}
+	startReveal();
+}
+
+// Human clicks one of their OTHER placed tiles to move the scout there
+export function soloScoutChooseSwapTarget(tileId: number): void {
+	const s = game.soloScoutState;
+	if (!s) return;
+	if (tileId === s.humanScoutTileId) return; // can't swap with own tile
+	if (!game.currentRound.humanPlacements[tileId]) return; // must be a tile human placed on
+	game.soloScoutState = { ...s, swapTargetTileId: tileId };
+}
+
+export function soloScoutSwap(): void {
+	const s = game.soloScoutState;
+	if (!s || s.swapTargetTileId === null) return;
+	const humanScout = game.currentRound.humanPlacements[s.humanScoutTileId];
+	const humanTarget = game.currentRound.humanPlacements[s.swapTargetTileId];
+	// Swap: scout moves to target tile, target card moves to scout's original tile
+	const newHuman = { ...game.currentRound.humanPlacements, [s.swapTargetTileId]: humanScout, [s.humanScoutTileId]: humanTarget };
+	game.currentRound.humanPlacements = newHuman;
+	game.soloScoutState = null;
+	startReveal();
+}
+
+export function soloScoutKeep(): void {
+	game.soloScoutState = null;
+	startReveal();
+}
+
 export function startReveal(): void {
 	game.phase = 'revealing';
 	setTimeout(resolve, 1200);
 }
 
 export function resolve(): void {
-	const cpuPlacements = cpuPlaceCards(game.cpuHand, TILE_IDS);
+	const cpuPlacements =
+		Object.keys(game.currentRound.cpuPlacements).length > 0
+			? new Map(Object.entries(game.currentRound.cpuPlacements).map(([k, v]) => [Number(k), v as Card]))
+			: cpuPlaceCards(game.cpuHand, TILE_IDS);
 	const prev = game.history.length > 0 ? game.history[game.history.length - 1] : null;
 
 	const ctx = {
-		coloredTileColors: {} as Record<number, CardColor>,
+		coloredTileColors: COLORED_TILE_COLORS,
 		hardWorkerLevels: game.hardWorkerLevels,
 		playerHands: {} as Record<string, Card[]>
 	};
@@ -216,6 +271,9 @@ export function startBuying(): void {
 	const maxSwaps = game.currentRound.winner === 'human' ? 1 : 2;
 	game.humanSwapsUsed = 0;
 	game.humanMaxSwaps = maxSwaps;
+
+	// Restore hand from placed cards so the buying panel shows the full hand
+	game.humanHand = Object.values(game.currentRound.humanPlacements);
 
 	// Deal up to 4 cards from draw pile into store
 	const newDrawPile = [...game.drawPile];

@@ -23,6 +23,7 @@
 		isGerryAdjacent?: boolean;
 		isGerrymandering?: boolean;
 		onTileClick?: () => void;
+		abilityBadges?: { label: string; color: string }[];
 	}
 
 	let {
@@ -33,7 +34,8 @@
 		groupIndex = -1, groupColor,
 		isGerrySelected = false, isGerryAdjacent = false, isGerrymandering = false,
 		onTileClick,
-		mpResultWinColor
+		mpResultWinColor,
+		abilityBadges
 	}: Props = $props();
 
 	const displayCharisma = $derived(
@@ -187,11 +189,11 @@
 			pointer-events="none"
 		>{id}</text>
 	{:else if mpResultWinColor}
-		<!-- Multiplayer resolution: winner dot + tile id -->
-		<circle cx={cx} cy={cy - size * 0.15} r={size * 0.2} fill={mpResultWinColor} opacity="0.9" />
+		<!-- Multiplayer resolution: winner dot + tile id + ability badges -->
+		<circle cx={cx} cy={cy - size * 0.25} r={size * 0.2} fill={mpResultWinColor} opacity="0.9" />
 		<text
 			x={cx}
-			y={cy + size * 0.35}
+			y={cy + size * 0.1}
 			text-anchor="middle"
 			dominant-baseline="central"
 			font-size={size * 0.17}
@@ -199,6 +201,31 @@
 			fill="#666"
 			pointer-events="none"
 		>{id}</text>
+		{#if abilityBadges?.length}
+			{#each abilityBadges.slice(0, 3) as badge, i}
+				<rect
+					x={cx - size * 0.38}
+					y={cy + size * 0.28 + i * size * 0.27}
+					width={size * 0.76}
+					height={size * 0.22}
+					rx={size * 0.06}
+					fill={badge.color}
+					opacity="0.9"
+					pointer-events="none"
+				/>
+				<text
+					x={cx}
+					y={cy + size * 0.39 + i * size * 0.27}
+					text-anchor="middle"
+					dominant-baseline="central"
+					font-size={size * 0.15}
+					font-family="sans-serif"
+					font-weight="700"
+					fill="white"
+					pointer-events="none"
+				>{badge.label}</text>
+			{/each}
+		{/if}
 	{:else}
 		<!-- Default: tile number -->
 		<text

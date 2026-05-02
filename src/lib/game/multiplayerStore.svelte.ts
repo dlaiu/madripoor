@@ -14,7 +14,7 @@ import type {
 	ResolverContext,
 	TileGroup
 } from './types.js';
-import { getNeighbors } from '../board/hex.js';
+import { COLORED_TILE_COLORS, getNeighbors } from '../board/hex.js';
 import { supabase } from '../supabase.js';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
@@ -110,6 +110,14 @@ export function otherPlayers(): PlayerState[] {
 
 export function myRoundWins(): number {
 	return myState()?.roundWins ?? 0;
+}
+
+// Returns the Hard Worker's earned CHA level (from a previous lost tile) if one exists.
+// The escalation is tile-specific, but since a card can only be on one tile at a time,
+// we can look up by card ID alone. Used to show the earned level in the hand.
+export function hardWorkerEarnedCha(cardId: string): number | null {
+	const entry = Object.entries(mp.hardWorkerLevels).find(([k]) => k.startsWith(cardId + ':'));
+	return entry ? (entry[1] as number) : null;
 }
 
 // Party Leader penalty visibility: ≥2 PLs in hand + placed → display CHA1
@@ -216,8 +224,10 @@ async function loadMyHand(gameId: string, myUserId: string, roundNumber: number)
 	if (myRow?.hand_json && myRow.hand_json.length > 0) {
 		mp.myHand = myRow.hand_json.map((c) => coerceCard(c as unknown as Record<string, unknown>));
 	} else {
-		// Round 1 or hand not yet persisted — build fresh and save
-		const freshHand = buildHand('human');
+		// Fallback: hand_json missing — host should have written it before starting the game.
+		console.warn('[loadMyHand] hand_json missing in DB, falling back to buildHand');
+		const playerIdx = myRow?.player_index ?? 0;
+		const freshHand = buildHand('human', `p${playerIdx}`);
 		mp.myHand = freshHand;
 		await db.saveHand(gameId, freshHand);
 	}
@@ -364,27 +374,36 @@ function handlePlayersChange(payload: { new: Record<string, unknown> }): void {
 	}
 }
 
+let _groupReloadTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleGroupReload() {
+	if (!mp.gameId) return;
+	if (_groupReloadTimer !== null) clearTimeout(_groupReloadTimer);
+	const gameId = mp.gameId;
+	const rn = mp.roundNumber;
+	_groupReloadTimer = setTimeout(() => {
+		_groupReloadTimer = null;
+		db.getGroupsForRound(gameId, rn)
+			.then((rows) => { mp.groups = rows.map((r) => ({ id: r.group_local_id, tileIds: r.tile_ids })); })
+			.catch(console.error);
+	}, 120);
+}
+
 function handleGroupsChange(payload: {
 	eventType: string;
 	new: Record<string, unknown>;
 	old: Record<string, unknown>;
 }): void {
-	if (payload.eventType === 'DELETE') {
-		const localId = payload.old.group_local_id as string | undefined;
-		if (localId) {
-			mp.groups = mp.groups.filter((g) => g.id !== localId);
-		} else if (mp.gameId) {
-			// REPLICA IDENTITY not FULL — payload.old has no group_local_id; reload from DB
-			const rn = mp.roundNumber;
-			db.getGroupsForRound(mp.gameId, rn).then((rows) => {
-				mp.groups = rows.map((r) => ({ id: r.group_local_id, tileIds: r.tile_ids }));
-			}).catch(console.error);
-		}
-	} else {
-		// Gerrymanderer manages mp.groups directly — ignore Realtime echoes of their own writes
-		// to prevent a race where the INSERT echo arrives after a local delete
-		if (isGerrymanderer()) return;
+	// Only process group events during gerrymandering. Events from a previous round's
+	// confirmGerrymandering (clearGroupsForRound + writeGroup) can arrive late — after the
+	// phase has already advanced to placement — and would corrupt mp.groups if not gated.
+	if (mp.phase !== 'gerrymandering') return;
+	// Gerrymanderer manages mp.groups directly via gerryClickTile; ignore echoes.
+	if (isGerrymanderer()) return;
 
+	if (payload.eventType === 'DELETE') {
+		// Bulk deletes fire multiple events — debounce to one reload.
+		scheduleGroupReload();
+	} else {
 		const row = payload.new;
 		const group: TileGroup = {
 			id: row.group_local_id as string,
@@ -467,14 +486,47 @@ function onPhaseTransition(from: MultiplayerPhase, to: MultiplayerPhase): void {
 		// Load hand from DB (persisted from previous round's card buying, or fresh on round 1)
 		loadMyHand(mp.gameId, mp.myUserId!, mp.roundNumber).catch(console.error);
 		db.resetReadyStatus(mp.gameId).catch(console.error);
+		// If entering placement after gerrymandering, reload authoritative groups from DB.
+		// Groups are stored under the previous round number (gerrymandering uses roundNumber before
+		// the increment, placement uses roundNumber after). This ensures all clients converge on
+		// the same final group state regardless of any Realtime delivery order.
+		if (from === 'gerrymandering') {
+			const gameId = mp.gameId;
+			const prevRound = mp.roundNumber - 1;
+			db.getGroupsForRound(gameId, prevRound)
+				.then((rows) => { mp.groups = rows.map((r) => ({ id: r.group_local_id, tileIds: r.tile_ids })); })
+				.catch(console.error);
+		}
 	}
 
 	if (to === 'gerrymandering') {
 		mp.gerrySelectedTileId = null;
-		if (mp.groups.length > 0 && mp.gameId && isGerrymanderer()) {
-			for (const group of mp.groups) {
-				db.writeGroup(mp.gameId, mp.roundNumber, group).catch(console.error);
-			}
+		if (isGerrymanderer() && mp.gameId) {
+			// Publish initial groups to DB under round N so non-hosts can load them.
+			// confirmGerrymandering will do an authoritative clear+rewrite before advancing,
+			// so any race here only affects round N rows (not the final state).
+			const gameId = mp.gameId;
+			const rn = mp.roundNumber;
+			const startGroups = [...mp.groups];
+			db.clearGroupsForRound(gameId, rn)
+				.then(() => Promise.all(startGroups.map((g) => db.writeGroup(gameId, rn, g))))
+				.catch(console.error);
+		} else if (mp.gameId) {
+			// Non-gerrymanderers: clear immediately, then load from round N after a short
+			// delay to let the gerrymanderer's initial write land in DB.
+			mp.groups = [];
+			const gameId = mp.gameId;
+			const rn = mp.roundNumber;
+			setTimeout(() => {
+				if (mp.phase !== 'gerrymandering') return;
+				db.getGroupsForRound(gameId, rn)
+					.then((rows) => {
+						if (mp.phase === 'gerrymandering') {
+							mp.groups = rows.map((r) => ({ id: r.group_local_id, tileIds: r.tile_ids }));
+						}
+					})
+					.catch(console.error);
+			}, 250);
 		}
 	}
 
@@ -525,7 +577,7 @@ async function runResolution(): Promise<void> {
 
 	const players = await db.getGamePlayers(mp.gameId);
 	const ctx: ResolverContext = {
-		coloredTileColors: {},
+		coloredTileColors: COLORED_TILE_COLORS,
 		hardWorkerLevels: mp.hardWorkerLevels,
 		playerHands: Object.fromEntries(players.map((p) => [p.user_id, p.hand_json ?? []]))
 	};
@@ -617,7 +669,11 @@ async function advanceBuyingTurn(): Promise<void> {
 	if (nextUserId) {
 		await db.advanceBuyingTurn(mp.gameId, nextUserId);
 	} else {
-		// All done — gerry_player_id already set by advanceToNextRound; go to gerrymandering
+		// All done — return any unsold store cards to the bottom of the draw pile before
+		// advancing, so they're available in future rounds instead of being discarded.
+		const unsold = mp.cardStore.filter((c): c is Card => c !== null);
+		const updatedPile = [...mp.drawPile, ...unsold];
+		await db.returnUnsoldCards(mp.gameId, updatedPile);
 		await db.updatePhase(mp.gameId, 'gerrymandering');
 	}
 }
@@ -689,7 +745,7 @@ export async function confirmMrPopularColor(color: CardColor): Promise<void> {
 	mp.myHand = mp.myHand.filter((c) => c.id !== card.id);
 	if (displaced) mp.myHand = [...mp.myHand, displaced];
 
-	mp.myPlacements = { ...mp.myPlacements, [tileId]: card };
+	mp.myPlacements = { ...mp.myPlacements, [tileId]: { ...card, color } };
 	mp.mrPopularPending = null;
 
 	const myP = myState();
@@ -780,9 +836,13 @@ export async function confirmGerrymandering(): Promise<void> {
 	if (!mp.gameId || !isGerrymanderer()) return;
 	const { valid } = validateGroups(mp.groups, mp.roundNumber + 1);
 	if (!valid) return;
-
-	await db.updateRoundNumber(mp.gameId, mp.roundNumber + 1);
-	await db.updatePhase(mp.gameId, 'placement');
+	// Write the authoritative final group state before advancing phase, so all clients
+	// can reload from DB on placement entry rather than depending on incremental Realtime events.
+	await db.clearGroupsForRound(mp.gameId, mp.roundNumber);
+	await Promise.all(mp.groups.map((g) => db.writeGroup(mp.gameId!, mp.roundNumber, g)));
+	// Atomic update: round_number and phase in one call so clients never see
+	// a transient gerrymandering+new-round state that prevents phase transition.
+	await db.advanceGerryToPlacement(mp.gameId, mp.roundNumber + 1);
 }
 
 export async function clearGroups(): Promise<void> {

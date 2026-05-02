@@ -21,6 +21,7 @@
 		gerrySelectedTileId?: number | null;
 		isGerrymandering?: boolean;
 		onTileClick?: (tileId: number) => void;
+		tileAbilityBadges?: Record<number, { label: string; color: string }[]>;
 	}
 
 	let {
@@ -36,7 +37,8 @@
 		groups = [],
 		gerrySelectedTileId = null,
 		isGerrymandering = false,
-		onTileClick
+		onTileClick,
+		tileAbilityBadges
 	}: Props = $props();
 
 	const mpResultInfo = $derived.by(() => {
@@ -121,6 +123,7 @@
 			isGerryAdjacent={gerryAdjacentIds.has(tile.id)}
 			{isGerrymandering}
 			onTileClick={onTileClick ? () => onTileClick!(tile.id) : undefined}
+			abilityBadges={tileAbilityBadges?.[tile.id]}
 		/>
 	{/each}
 </svg>

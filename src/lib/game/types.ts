@@ -43,6 +43,13 @@ export interface TileGroup {
 	tileIds: number[];
 }
 
+export interface ScoreBonuses {
+	ability: number;
+	entrench: number;
+	rollType: 'pollster' | 'disadvantage' | 'normal';
+	abilityLabel?: string;
+}
+
 export interface TileResult {
 	tileId: number;
 	humanCard: Card;
@@ -52,6 +59,8 @@ export interface TileResult {
 	cpuRoll: number;
 	cpuScore: number;
 	winner: PlayerKey | 'tie';
+	humanBonuses?: ScoreBonuses;
+	cpuBonuses?: ScoreBonuses;
 }
 
 export interface GroupResult {
@@ -61,6 +70,8 @@ export interface GroupResult {
 	cpuTotalScore: number;
 	perTile: TileResult[];
 	winner: PlayerKey | 'tie';
+	humanEntrenchBonus?: number;
+	cpuEntrenchBonus?: number;
 }
 
 export interface RoundState {
@@ -90,6 +101,11 @@ export interface GameState {
 	mrPopularPending: { tileId: number; card: Card } | null;
 	humanSwapsUsed: number;
 	humanMaxSwaps: number;
+	soloScoutState: {
+		humanScoutTileId: number;
+		peekedCard: Card;           // CPU card on the scout's tile (shown immediately)
+		swapTargetTileId: number | null; // human's other tile they want to move scout to
+	} | null;
 }
 
 // ── Multiplayer types ──────────────────────────────────────────────────────────
@@ -110,12 +126,19 @@ export interface MPPlayerScore {
 	card: Card;
 	roll: number;
 	score: number;
+	bonuses?: {
+		ability: number;                                       // from computeAbilityScoreBonus
+		entrench: number;                                      // 0 or 2 (solo tiles only)
+		rollType: 'pollster' | 'disadvantage' | 'normal';
+		abilityLabel?: string;                                 // e.g. 'Hometown', 'Coalition'
+	};
 }
 
 export interface MPTileResult {
 	tileId: number;
 	scores: Record<string, MPPlayerScore>; // keyed by userId
 	winner: string;                         // userId of winner
+	underdogActive?: boolean;
 }
 
 export interface MPGroupResult {
@@ -124,6 +147,8 @@ export interface MPGroupResult {
 	totals: Record<string, number>;         // userId -> total group score
 	perTile: MPTileResult[];
 	winner: string;                         // userId of winner
+	groupEntrenchBonuses?: Record<string, number>; // userId -> 2 if entrenched (0 if not/underdog)
+	underdogActive?: boolean;
 }
 
 export interface MPRoundSnapshot {

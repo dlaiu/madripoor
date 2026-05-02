@@ -50,6 +50,13 @@ export function getNeighbors(tileId: number): TileDefinition[] {
 		.filter((t): t is TileDefinition => t !== undefined);
 }
 
+// Which board tiles have a fixed color (used by Hometown ability)
+export const COLORED_TILE_COLORS: Record<number, TileColor> = {
+	4: 'red',   11: 'red',
+	7: 'blue',  12: 'blue',
+	2: 'green',  9: 'green',
+};
+
 export const TILE_COLORS: Record<TileColor, string> = {
 	red:   '#f87171',
 	blue:  '#60a5fa',

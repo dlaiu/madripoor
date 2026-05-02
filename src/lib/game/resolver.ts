@@ -22,21 +22,42 @@ export function resolveTile(
 	humanCard: Card,
 	cpuCard: Card,
 	humanEntrenched = false,
-	cpuEntrenched = false
+	cpuEntrenched = false,
+	humanAbilityBonus = 0,
+	cpuAbilityBonus = 0,
+	humanAbilityLabel?: string,
+	cpuAbilityLabel?: string
 ): TileResult {
-	const hBonus = humanEntrenched ? 2 : 0;
-	const cBonus = cpuEntrenched ? 2 : 0;
+	const hEntrench = humanEntrenched ? 2 : 0;
+	const cEntrench = cpuEntrenched ? 2 : 0;
 
-	let humanRoll = rollD6();
-	let cpuRoll = rollD6();
-	let humanScore = humanCard.charisma * humanRoll + hBonus;
-	let cpuScore = cpuCard.charisma * cpuRoll + cBonus;
+	// Pollster: roll 2d6 keep higher (negated if opponent has Disadvantage)
+	// Disadvantage: opponent rerolls their die and takes the lower value
+	const hPollster = humanCard.ability === 'pollster';
+	const cPollster = cpuCard.ability === 'pollster';
+	const humanDisadvantaged = cpuCard.ability === 'disadvantage';
+	const cpuDisadvantaged = humanCard.ability === 'disadvantage';
+
+	const hRollType: 'pollster' | 'disadvantage' | 'normal' =
+		humanDisadvantaged ? 'disadvantage' : (hPollster && !cpuDisadvantaged ? 'pollster' : 'normal');
+	const cRollType: 'pollster' | 'disadvantage' | 'normal' =
+		cpuDisadvantaged ? 'disadvantage' : (cPollster && !humanDisadvantaged ? 'pollster' : 'normal');
+
+	function rollFor(rollType: 'pollster' | 'disadvantage' | 'normal'): number {
+		const r = rollType === 'pollster' ? Math.max(rollD6(), rollD6()) : rollD6();
+		return rollType === 'disadvantage' ? Math.min(r, rollD6()) : r;
+	}
+
+	let humanRoll = rollFor(hRollType);
+	let cpuRoll = rollFor(cRollType);
+	let humanScore = humanCard.charisma * humanRoll + hEntrench + humanAbilityBonus;
+	let cpuScore = cpuCard.charisma * cpuRoll + cEntrench + cpuAbilityBonus;
 
 	if (humanScore === cpuScore) {
-		humanRoll = rollD6();
-		cpuRoll = rollD6();
-		humanScore = humanCard.charisma * humanRoll + hBonus;
-		cpuScore = cpuCard.charisma * cpuRoll + cBonus;
+		humanRoll = rollFor(hRollType);
+		cpuRoll = rollFor(cRollType);
+		humanScore = humanCard.charisma * humanRoll + hEntrench + humanAbilityBonus;
+		cpuScore = cpuCard.charisma * cpuRoll + cEntrench + cpuAbilityBonus;
 	}
 
 	let winner: PlayerKey | 'tie';
@@ -44,7 +65,10 @@ export function resolveTile(
 	else if (cpuScore > humanScore) winner = 'cpu';
 	else winner = 'tie';
 
-	return { tileId, humanCard, cpuCard, humanRoll, humanScore, cpuRoll, cpuScore, winner };
+	const humanBonuses = { ability: humanAbilityBonus, entrench: hEntrench, rollType: hRollType, abilityLabel: humanAbilityLabel };
+	const cpuBonuses = { ability: cpuAbilityBonus, entrench: cEntrench, rollType: cRollType, abilityLabel: cpuAbilityLabel };
+
+	return { tileId, humanCard, cpuCard, humanRoll, humanScore, cpuRoll, cpuScore, winner, humanBonuses, cpuBonuses };
 }
 
 export function cpuPlaceCards(cpuHand: Card[], tileIds: number[]): Map<number, Card> {
@@ -79,11 +103,29 @@ function resolveGroup(
 	group: TileGroup,
 	humanPlacements: Record<number, Card>,
 	cpuPlacements: Map<number, Card>,
-	prev: RoundState | null
+	prev: RoundState | null,
+	ctx: ResolverContext = { coloredTileColors: {}, hardWorkerLevels: {}, playerHands: {} }
 ): GroupResult {
-	const perTile = group.tileIds.map((tileId) =>
-		resolveTile(tileId, humanPlacements[tileId], cpuPlacements.get(tileId)!)
-	);
+	// Collect all cards in this group for Coalition check
+	const allGroupCards: Card[] = [];
+	for (const tileId of group.tileIds) {
+		if (humanPlacements[tileId]) allGroupCards.push(humanPlacements[tileId]);
+		const cpuCard = cpuPlacements.get(tileId);
+		if (cpuCard) allGroupCards.push(cpuCard);
+	}
+
+	const underdogActive = checkSoloUnderdogActive(group.tileIds, humanPlacements, cpuPlacements, prev, false);
+
+	const perTile = group.tileIds.map((tileId) => {
+		const humanCard = humanPlacements[tileId];
+		const cpuCard = cpuPlacements.get(tileId)!;
+		const tileColor = ctx.coloredTileColors[tileId] ?? null;
+		const hAbility = computeAbilityScoreBonus(humanCard, tileId, tileColor, false, allGroupCards, false);
+		const cAbility = computeAbilityScoreBonus(cpuCard, tileId, tileColor, false, allGroupCards, false);
+		const hLabel = hAbility > 0 ? (ABILITY_BONUS_LABELS[humanCard.type === 'party_leader' ? 'party_leader' : humanCard.ability] ?? humanCard.ability) : undefined;
+		const cLabel = cAbility > 0 ? (ABILITY_BONUS_LABELS[cpuCard.type === 'party_leader' ? 'party_leader' : cpuCard.ability] ?? cpuCard.ability) : undefined;
+		return resolveTile(tileId, humanCard, cpuCard, false, false, hAbility, cAbility, hLabel, cLabel);
+	});
 
 	let { human: humanBase, cpu: cpuBase } = sumGroupScores(perTile);
 
@@ -95,8 +137,10 @@ function resolveGroup(
 		detectEntrenchment(id, 'cpu', cpuPlacements.get(id)!, prev)
 	);
 
-	const humanTotal = humanBase + (humanEntrenched ? 2 : 0);
-	const cpuTotal = cpuBase + (cpuEntrenched ? 2 : 0);
+	const hEntrenchBonus = humanEntrenched && !underdogActive ? 2 : 0;
+	const cEntrenchBonus = cpuEntrenched && !underdogActive ? 2 : 0;
+	const humanTotal = humanBase + hEntrenchBonus;
+	const cpuTotal = cpuBase + cEntrenchBonus;
 
 	let winner: PlayerKey | 'tie';
 	if (humanTotal > cpuTotal) {
@@ -105,12 +149,17 @@ function resolveGroup(
 		winner = 'cpu';
 	} else {
 		// Tie-break: re-roll all tiles in the group
-		const rerollPerTile = group.tileIds.map((tileId) =>
-			resolveTile(tileId, humanPlacements[tileId], cpuPlacements.get(tileId)!)
-		);
+		const rerollPerTile = group.tileIds.map((tileId) => {
+			const humanCard = humanPlacements[tileId];
+			const cpuCard = cpuPlacements.get(tileId)!;
+			const tileColor = ctx.coloredTileColors[tileId] ?? null;
+			const hAbility = computeAbilityScoreBonus(humanCard, tileId, tileColor, false, allGroupCards, false);
+			const cAbility = computeAbilityScoreBonus(cpuCard, tileId, tileColor, false, allGroupCards, false);
+			return resolveTile(tileId, humanCard, cpuCard, false, false, hAbility, cAbility);
+		});
 		const reroll = sumGroupScores(rerollPerTile);
-		const humanReroll = reroll.human + (humanEntrenched ? 2 : 0);
-		const cpuReroll = reroll.cpu + (cpuEntrenched ? 2 : 0);
+		const humanReroll = reroll.human + hEntrenchBonus;
+		const cpuReroll = reroll.cpu + cEntrenchBonus;
 		if (humanReroll > cpuReroll) winner = 'human';
 		else if (cpuReroll > humanReroll) winner = 'cpu';
 		else winner = 'tie';
@@ -122,7 +171,9 @@ function resolveGroup(
 		humanTotalScore: humanTotal,
 		cpuTotalScore: cpuTotal,
 		perTile,
-		winner
+		winner,
+		humanEntrenchBonus: hEntrenchBonus,
+		cpuEntrenchBonus: cEntrenchBonus
 	};
 }
 
@@ -169,11 +220,17 @@ export function resolveRound(
 		const cpuCard = effectiveCpuPlacements.get(tileId)!;
 		const hE = detectEntrenchment(tileId, 'human', humanCard as Card, prev);
 		const cE = detectEntrenchment(tileId, 'cpu', cpuCard, prev);
-		tileResults.push(resolveTile(tileId, humanCard as Card, cpuCard, hE, cE));
+		const underdogActive = checkSoloUnderdogActive([tileId], effectiveHumanPlacements, effectiveCpuPlacements, prev, true, tileId);
+		const tileColor = ctx.coloredTileColors[tileId] ?? null;
+		const hAbility = computeAbilityScoreBonus(humanCard as Card, tileId, tileColor, true, [], false);
+		const cAbility = computeAbilityScoreBonus(cpuCard, tileId, tileColor, true, [], false);
+		const hLabel = hAbility > 0 ? (ABILITY_BONUS_LABELS[(humanCard as Card).type === 'party_leader' ? 'party_leader' : (humanCard as Card).ability] ?? (humanCard as Card).ability) : undefined;
+		const cLabel = cAbility > 0 ? (ABILITY_BONUS_LABELS[cpuCard.type === 'party_leader' ? 'party_leader' : cpuCard.ability] ?? cpuCard.ability) : undefined;
+		tileResults.push(resolveTile(tileId, humanCard as Card, cpuCard, hE && !underdogActive, cE && !underdogActive, hAbility, cAbility, hLabel, cLabel));
 	}
 
 	const groupResults: GroupResult[] = groups.map((group) =>
-		resolveGroup(group, effectiveHumanPlacements, effectiveCpuPlacements, prev)
+		resolveGroup(group, effectiveHumanPlacements, effectiveCpuPlacements, prev, ctx)
 	);
 
 	// Compute Hard Worker escalations (mirrors resolveRoundMP Phase 7)
@@ -186,7 +243,7 @@ export function resolveRound(
 		const hwKey = `${card.id}:${tileId}`;
 
 		const prevCard = prev?.humanPlacements[tileId];
-		const wasOnSameTile = prevCard?.id === card.id;
+		const wasOnSameTile = !prev || prevCard?.id === card.id;
 
 		if (!wasOnSameTile) {
 			delete hardWorkerEscalations[hwKey];
@@ -215,7 +272,7 @@ export function resolveRound(
 		const hwKey = `${card.id}:${tileId}`;
 
 		const prevCard = prev?.cpuPlacements[tileId];
-		const wasOnSameTile = prevCard?.id === card.id;
+		const wasOnSameTile = !prev || prevCard?.id === card.id;
 
 		if (!wasOnSameTile) {
 			delete hardWorkerEscalations[hwKey];
@@ -307,6 +364,11 @@ function applyDisadvantage(currentRoll: number): number {
 	return Math.min(currentRoll, reroll);
 }
 
+const ABILITY_BONUS_LABELS: Record<string, string> = {
+	hometown: 'Hometown', independent: 'Indep', coalition: 'Coalition',
+	mr_popular: 'MrPop', party_leader: 'Leader'
+};
+
 function resolveTileMP(
 	tileId: number,
 	placements: Map<string, Card>, // userId -> Card
@@ -358,10 +420,17 @@ function resolveTileMP(
 			const card = placements.get(uid)!;
 			const entrenchBonus = (!underdogActive && entrenchBonuses[uid]) ? 2 : 0;
 			const abilityBonus = abilityBonuses[uid] ?? 0;
+			const rollType: 'pollster' | 'disadvantage' | 'normal' =
+				playerHasDisadvantageOpponent[uid] ? 'disadvantage' :
+				(hasPollster[uid] ? 'pollster' : 'normal');
+			// ability label: check card itself and also party_leader bonus
+			const abilityKey = card.type === 'party_leader' ? 'party_leader' : card.ability;
+			const abilityLabel = abilityBonus > 0 ? (ABILITY_BONUS_LABELS[abilityKey] ?? card.ability) : undefined;
 			scores[uid] = {
 				card,
 				roll: rolls[uid],
-				score: card.charisma * rolls[uid] + entrenchBonus + abilityBonus
+				score: card.charisma * rolls[uid] + entrenchBonus + abilityBonus,
+				bonuses: { ability: abilityBonus, entrench: entrenchBonus, rollType, abilityLabel }
 			};
 		}
 	};
@@ -390,7 +459,7 @@ function resolveTileMP(
 		computeScores();
 	}
 
-	return { tileId, scores, winner: getWinner()! };
+	return { tileId, scores, winner: getWinner()!, underdogActive };
 }
 
 function detectEntrenchmentMP(
@@ -449,6 +518,36 @@ function checkUnderdogActive(
 	return false;
 }
 
+function checkSoloUnderdogActive(
+	tileIds: number[],
+	humanPlacements: Record<number, Card>,
+	cpuPlacements: Map<number, Card>,
+	prev: RoundState | null,
+	isTileLevel: boolean,
+	tileIdForSolo?: number
+): boolean {
+	if (!prev) return false;
+
+	const getPrevWinner = (): PlayerKey | 'tie' | null => {
+		if (isTileLevel && tileIdForSolo !== undefined) {
+			return prev.results.find((r) => r.tileId === tileIdForSolo)?.winner ?? null;
+		}
+		return prev.groupResults.find((gr) => tileIds.every((id) => gr.tileIds.includes(id)))?.winner ?? null;
+	};
+
+	for (const tid of tileIds) {
+		if (humanPlacements[tid]?.ability === 'underdog') {
+			if (getPrevWinner() !== 'human') return true;
+		}
+	}
+	for (const tid of tileIds) {
+		if (cpuPlacements.get(tid)?.ability === 'underdog') {
+			if (getPrevWinner() !== 'cpu') return true;
+		}
+	}
+	return false;
+}
+
 function resolveGroupMP(
 	group: TileGroup,
 	allPlacements: Map<string, Record<number, Card>>,
@@ -499,6 +598,15 @@ function resolveGroupMP(
 		});
 	});
 
+	// Compute group-level entrenchment bonuses (negated by Underdog)
+	const groupEntrenchBonuses: Record<string, number> = {};
+	for (const uid of userIds) {
+		const entrenched = !underdogActive && group.tileIds.some((id) =>
+			detectEntrenchmentMP(id, uid, allPlacements.get(uid)![id], prev)
+		);
+		groupEntrenchBonuses[uid] = entrenched ? 2 : 0;
+	}
+
 	const computeTotals = (tiles: MPTileResult[]): Record<string, number> => {
 		const totals: Record<string, number> = {};
 		for (const uid of userIds) totals[uid] = 0;
@@ -507,14 +615,8 @@ function resolveGroupMP(
 				totals[uid] = (totals[uid] ?? 0) + (tile.scores[uid]?.score ?? 0);
 			}
 		}
-		// Entrenchment: +2 for first entrenched card per player per group (negated by Underdog)
-		if (!underdogActive) {
-			for (const uid of userIds) {
-				const entrenched = group.tileIds.some((id) =>
-					detectEntrenchmentMP(id, uid, allPlacements.get(uid)![id], prev)
-				);
-				if (entrenched) totals[uid] += 2;
-			}
+		for (const uid of userIds) {
+			if (groupEntrenchBonuses[uid]) totals[uid] += groupEntrenchBonuses[uid];
 		}
 		return totals;
 	};
@@ -560,7 +662,7 @@ function resolveGroupMP(
 		totals = computeTotals(finalPerTile);
 	}
 
-	return { groupId: group.id, tileIds: group.tileIds, totals, perTile: finalPerTile, winner: getWinner(totals)! };
+	return { groupId: group.id, tileIds: group.tileIds, totals, perTile: finalPerTile, winner: getWinner(totals)!, groupEntrenchBonuses, underdogActive };
 }
 
 export function resolveRoundMP(
@@ -673,7 +775,8 @@ export function resolveRoundMP(
 
 			// Check if the card was on the same tile in prev round (same card id on same tile)
 			const prevCard = prev?.allPlacements[uid]?.[tileId];
-			const wasOnSameTile = prevCard?.id === card.id;
+			// No prev round = first placement; treat as same tile so round-1 losses earn escalation.
+			const wasOnSameTile = !prev || prevCard?.id === card.id;
 
 			if (!wasOnSameTile) {
 				// Hard Worker moved tiles or is new — reset to CHA1 (remove key)

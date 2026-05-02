@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { mp, isHost } from '$lib/game/multiplayerStore.svelte.js';
-	import { startGame } from '$lib/db.js';
+	import { startGame, saveHandForPlayer, initGameStart } from '$lib/db.js';
+	import { buildGameStart } from '$lib/game/deckFactory.js';
 
 	let copying = $state(false);
 
@@ -12,6 +13,10 @@
 
 	async function handleStart() {
 		if (!mp.gameId) return;
+		const sorted = [...mp.players].sort((a, b) => a.playerIndex - b.playerIndex);
+		const { hands, drawPile } = buildGameStart(sorted.length as 2 | 3 | 4);
+		await Promise.all(sorted.map((p, i) => saveHandForPlayer(mp.gameId!, p.userId, hands[i])));
+		await initGameStart(mp.gameId, drawPile);
 		await startGame(mp.gameId);
 	}
 

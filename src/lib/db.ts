@@ -1,5 +1,5 @@
 import { supabase } from './supabase.js';
-import { buildDrawPile, coerceCard, shuffleCards } from './game/deckFactory.js';
+import { coerceCard } from './game/deckFactory.js';
 import type {
 	Card,
 	CardColor,
@@ -38,8 +38,6 @@ export async function createGame(
 	if (authErr || !authData.user) throw authErr ?? new Error('Auth failed');
 	const myUserId = authData.user.id;
 
-	const drawPile = shuffleCards(buildDrawPile());
-
 	// Retry on room code collision (UNIQUE constraint)
 	let gameId: string | undefined;
 	let roomCode: string | undefined;
@@ -52,7 +50,7 @@ export async function createGame(
 				phase: 'lobby',
 				round_number: 1,
 				max_players: maxPlayers,
-				draw_pile_json: drawPile
+				draw_pile_json: []
 			})
 			.select('id')
 			.single();
@@ -168,6 +166,15 @@ export async function updateRoundNumber(gameId: string, roundNumber: number): Pr
 	unwrap(await supabase.from('games').update({ round_number: roundNumber }).eq('id', gameId));
 }
 
+export async function advanceGerryToPlacement(gameId: string, nextRound: number): Promise<void> {
+	unwrap(
+		await supabase
+			.from('games')
+			.update({ round_number: nextRound, phase: 'placement' })
+			.eq('id', gameId)
+	);
+}
+
 // ── Placement ─────────────────────────────────────────────────────────────────
 
 export async function submitPlacement(
@@ -267,6 +274,14 @@ export async function saveHand(gameId: string, hand: Card[]): Promise<void> {
 			.eq('game_id', gameId)
 			.eq('user_id', userId)
 	);
+}
+
+export async function saveHandForPlayer(gameId: string, userId: string, hand: Card[]): Promise<void> {
+	unwrap(await supabase.from('game_players').update({ hand_json: hand }).eq('game_id', gameId).eq('user_id', userId));
+}
+
+export async function initGameStart(gameId: string, drawPile: Card[]): Promise<void> {
+	unwrap(await supabase.from('games').update({ draw_pile_json: drawPile }).eq('id', gameId));
 }
 
 // ── Resolution ────────────────────────────────────────────────────────────────
@@ -429,6 +444,15 @@ export async function replenishStoreSlot(
 		await supabase
 			.from('games')
 			.update({ card_store_json: newStore, draw_pile_json: newDrawPile })
+			.eq('id', gameId)
+	);
+}
+
+export async function returnUnsoldCards(gameId: string, updatedDrawPile: Card[]): Promise<void> {
+	unwrap(
+		await supabase
+			.from('games')
+			.update({ draw_pile_json: updatedDrawPile })
 			.eq('id', gameId)
 	);
 }

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { game, selectCard, soloPartyLeaderPenalty } from '$lib/game/gameState.svelte.js';
+	import { game, selectCard, soloPartyLeaderPenalty, soloHardWorkerEarnedCha } from '$lib/game/gameState.svelte.js';
 	import CardComponent from './CardComponent.svelte';
 </script>
 
@@ -10,7 +10,11 @@
 				{card}
 				isSelected={game.selectedCard?.id === card.id}
 				onClick={() => selectCard(card)}
-				displayChaOverride={soloPartyLeaderPenalty() && card.type === 'party_leader' ? 1 : null}
+				displayChaOverride={
+				soloPartyLeaderPenalty() && card.type === 'party_leader' ? 1 :
+				card.ability === 'hard_worker' ? soloHardWorkerEarnedCha(card.id) :
+				null
+			}
 			/>
 		{/each}
 	</div>

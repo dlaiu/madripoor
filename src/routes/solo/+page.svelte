@@ -6,14 +6,11 @@
 	import RoundSummary from '$lib/components/RoundSummary.svelte';
 	import MrPopularColorModal from '$lib/components/MrPopularColorModal.svelte';
 	import SoloBuyingPanel from '$lib/components/SoloBuyingPanel.svelte';
-	import { game, placeCard, unplaceCard, startReveal, gerryClickTile, confirmMrPopularColorSolo, cancelMrPopularPlacementSolo, soloPartyLeaderPenalty } from '$lib/game/gameState.svelte.js';
-	import type { TileColor } from '$lib/board/hex.js';
+	import { game, placeCard, unplaceCard, startScouting, soloScoutChooseSwapTarget, gerryClickTile, confirmMrPopularColorSolo, cancelMrPopularPlacementSolo, soloPartyLeaderPenalty } from '$lib/game/gameState.svelte.js';
+	import SoloScoutPanel from '$lib/components/SoloScoutPanel.svelte';
+	import { COLORED_TILE_COLORS } from '$lib/board/hex.js';
 
-	const coloredTiles: Record<number, TileColor> = {
-		4: 'red',   11: 'red',
-		7: 'blue',  12: 'blue',
-		2: 'green',  9: 'green',
-	};
+	const coloredTiles = COLORED_TILE_COLORS;
 
 	function handleTileClick(tileId: number) {
 		if (game.selectedCard) {
@@ -51,17 +48,22 @@
 
 	const tileClickHandler = $derived(
 		game.phase === 'placement' ? handleTileClick :
+		game.phase === 'scouting' ? (tileId: number) => soloScoutChooseSwapTarget(tileId) :
 		game.phase === 'gerrymandering' ? handleGerryTileClick :
 		undefined
 	);
 
-	// During placement, override displayed CHA to 1 for placed Party Leaders if penalty applies
+	// Override displayed CHA for placed cards (Party Leader penalty, Hard Worker escalation) across all phases
 	const boardCharismaOverrides = $derived.by(() => {
-		if (game.phase !== 'placement' || !soloPartyLeaderPenalty()) return {};
 		const overrides: Record<number, number> = {};
-		for (const [tileId, card] of Object.entries(game.currentRound.humanPlacements)) {
-			if (card.type === 'party_leader') {
-				overrides[Number(tileId)] = 1;
+		const plPenalty = soloPartyLeaderPenalty();
+		for (const [tileIdStr, card] of Object.entries(game.currentRound.humanPlacements)) {
+			const tileId = Number(tileIdStr);
+			if (card.type === 'party_leader' && plPenalty) {
+				overrides[tileId] = 1;
+			} else if (card.ability === 'hard_worker') {
+				const cha = game.hardWorkerLevels[`${card.id}:${tileId}`];
+				if (cha !== undefined) overrides[tileId] = cha;
 			}
 		}
 		return overrides;
@@ -82,7 +84,7 @@
 				<button
 					class="confirm-btn"
 					disabled={!allPlaced}
-					onclick={startReveal}
+					onclick={startScouting}
 				>
 					Reveal Cards →
 				</button>
@@ -116,6 +118,9 @@
 	{/if}
 	{#if game.phase === 'card_buying'}
 		<SoloBuyingPanel />
+	{/if}
+	{#if game.phase === 'scouting'}
+		<SoloScoutPanel />
 	{/if}
 	<RoundSummary />
 </main>

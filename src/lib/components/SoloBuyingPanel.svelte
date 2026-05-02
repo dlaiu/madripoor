@@ -1,157 +1,278 @@
 <script lang="ts">
-  import {
-    game,
-    buyCardSolo,
-    confirmSoloBuying
-  } from '$lib/game/gameState.svelte.js';
-  import type { Card } from '$lib/game/types.js';
+	import {
+		game,
+		buyCardSolo,
+		confirmSoloBuying,
+		soloHardWorkerEarnedCha,
+		soloPartyLeaderPenalty
+	} from '$lib/game/gameState.svelte.js';
+	import type { Card } from '$lib/game/types.js';
 
-  let selectedHandCardId = $state<string | null>(null);
+	let selectedStorePos = $state<number | null>(null);
+	let selectedHandCardId = $state<string | null>(null);
 
-  const swapsLeft = $derived(game.humanMaxSwaps - game.humanSwapsUsed);
-  const canBuy = $derived(swapsLeft > 0);
+	const swapsLeft = $derived(game.humanMaxSwaps - game.humanSwapsUsed);
+	const canBuy = $derived(swapsLeft > 0);
 
-  function handleStoreClick(storePos: number) {
-    if (!canBuy || !selectedHandCardId) return;
-    const storeCard = game.cardStore[storePos];
-    if (!storeCard) return;
-    buyCardSolo(storePos, selectedHandCardId);
-    selectedHandCardId = null;
-  }
+	const COLOR_EMOJI: Record<string, string> = { red: '🔴', blue: '🔵', green: '🟢' };
+	const ABILITY_LABELS: Record<string, string> = {
+		scout: 'Scout', hometown: 'Hometown', pollster: 'Pollster',
+		hard_worker: 'Hard Wkr', independent: 'Indep.', mr_popular: 'Mr. Pop.',
+		disadvantage: 'Disadv.', coalition: 'Coalition', underdog: 'Underdog'
+	};
 
-  function handleConfirm() {
-    confirmSoloBuying();
-  }
+	function abilityLabel(card: Card): string | null {
+		if (card.type === 'party_leader') return '★ Leader';
+		if (card.ability !== 'none') return ABILITY_LABELS[card.ability] ?? card.ability;
+		return null;
+	}
 
-  function cardLabel(card: Card): string {
-    const abilityPart = card.ability !== 'none' ? ` (${card.ability.replace('_', ' ')})` : '';
-    return `CHA${card.charisma} ${card.color}${abilityPart}`;
-  }
+	function displayCha(card: Card): number {
+		if (card.type === 'party_leader' && soloPartyLeaderPenalty()) return 1;
+		if (card.ability === 'hard_worker') return soloHardWorkerEarnedCha(card.id) ?? card.charisma;
+		return card.charisma;
+	}
+
+	function handleStoreClick(pos: number) {
+		if (!canBuy) return;
+		if (!game.cardStore[pos]) return;
+		selectedStorePos = selectedStorePos === pos ? null : pos;
+		selectedHandCardId = null;
+	}
+
+	function handleHandClick(cardId: string) {
+		if (!canBuy || selectedStorePos === null) return;
+		selectedHandCardId = selectedHandCardId === cardId ? null : cardId;
+	}
+
+	function handleConfirmSwap() {
+		if (selectedStorePos === null || selectedHandCardId === null) return;
+		buyCardSolo(selectedStorePos, selectedHandCardId);
+		selectedStorePos = null;
+		selectedHandCardId = null;
+	}
 </script>
 
 <div class="buying-panel">
-  <h3>Card Buying</h3>
-  <p class="swaps-info">
-    {#if canBuy}
-      Swaps remaining: <strong>{swapsLeft}</strong> — select a card from your hand, then click a store card to swap.
-    {:else}
-      No swaps remaining.
-    {/if}
-  </p>
+	<header class="panel-header">
+		<h2>Card Store</h2>
+		<p class="sub">
+			{#if canBuy}
+				{swapsLeft} swap{swapsLeft === 1 ? '' : 's'} remaining — select a store card, then a hand card to swap.
+			{:else}
+				No swaps remaining.
+			{/if}
+		</p>
+	</header>
 
-  <div class="store-section">
-    <h4>Store</h4>
-    <div class="store-slots">
-      {#each game.cardStore as card, i}
-        <button
-          class="store-slot"
-          class:empty={!card}
-          class:clickable={canBuy && !!card && !!selectedHandCardId}
-          onclick={() => handleStoreClick(i)}
-          disabled={!canBuy || !card || !selectedHandCardId}
-        >
-          {#if card}
-            {cardLabel(card)}
-          {:else}
-            <span class="empty-label">Empty</span>
-          {/if}
-        </button>
-      {/each}
-    </div>
-  </div>
+	<div class="store-section">
+		<p class="section-label">Store</p>
+		<div class="store-slots">
+			{#each { length: 4 } as _, i}
+				{@const card = game.cardStore[i] ?? null}
+				{#if card}
+					<button
+						class="card-slot"
+						class:selected={selectedStorePos === i}
+						class:disabled={!canBuy}
+						onclick={() => handleStoreClick(i)}
+					>
+						<span class="card-color">{COLOR_EMOJI[card.color]}</span>
+						<span class="card-cha">CHA{card.charisma}</span>
+						{#if abilityLabel(card)}<span class="card-ability">{abilityLabel(card)}</span>{/if}
+					</button>
+				{:else}
+					<div class="card-slot empty">—</div>
+				{/if}
+			{/each}
+		</div>
+	</div>
 
-  <div class="hand-section">
-    <h4>Your Hand</h4>
-    <div class="hand-cards">
-      {#each game.humanHand as card (card.id)}
-        <button
-          class="hand-card"
-          class:selected={selectedHandCardId === card.id}
-          onclick={() => {
-            if (!canBuy) return;
-            selectedHandCardId = selectedHandCardId === card.id ? null : card.id;
-          }}
-          disabled={!canBuy}
-        >
-          {cardLabel(card)}
-        </button>
-      {/each}
-    </div>
-  </div>
+	<div class="hand-section">
+		<p class="section-label">Your Hand ({game.humanHand.length} cards)</p>
+		<div class="hand-grid">
+			{#each game.humanHand as card (card.id)}
+				<button
+					class="card-slot small"
+					class:selected={selectedHandCardId === card.id}
+					class:disabled={!canBuy || selectedStorePos === null}
+					onclick={() => handleHandClick(card.id)}
+				>
+					<span class="card-color">{COLOR_EMOJI[card.color]}</span>
+					<span class="card-cha">CHA{displayCha(card)}</span>
+					{#if abilityLabel(card)}<span class="card-ability">{abilityLabel(card)}</span>{/if}
+				</button>
+			{/each}
+		</div>
+	</div>
 
-  <div class="actions">
-    <button class="confirm-btn" onclick={handleConfirm}>
-      Done Buying →
-    </button>
-  </div>
+	<footer class="panel-footer">
+		{#if selectedStorePos !== null && selectedHandCardId !== null}
+			<button class="confirm-btn" onclick={handleConfirmSwap}>
+				Confirm Swap →
+			</button>
+		{/if}
+		<button class="pass-btn" onclick={confirmSoloBuying}>
+			Done Buying →
+		</button>
+	</footer>
 </div>
 
 <style>
-  .buying-panel {
-    background: white;
-    border: 2px solid #6366f1;
-    border-radius: 12px;
-    padding: 20px 24px;
-    max-width: 480px;
-    margin: 1rem auto;
-    font-family: sans-serif;
-  }
+	.buying-panel {
+		position: fixed;
+		inset: 0;
+		background: rgba(255, 255, 255, 0.98);
+		display: flex;
+		flex-direction: column;
+		font-family: sans-serif;
+		z-index: 100;
+		overflow-y: auto;
+	}
 
-  h3 { margin: 0 0 8px; color: #6366f1; }
-  h4 { margin: 12px 0 6px; font-size: 0.9rem; color: #374151; }
+	.panel-header {
+		padding: 1.5rem 1.5rem 0.75rem;
+		border-bottom: 1px solid #e5e7eb;
+	}
 
-  .swaps-info {
-    font-size: 0.85rem;
-    color: #4b5563;
-    margin-bottom: 12px;
-  }
+	h2 {
+		margin: 0 0 4px;
+		font-size: 1.1rem;
+		font-weight: 700;
+	}
 
-  .store-slots, .hand-cards {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
+	.sub {
+		margin: 0;
+		font-size: 0.82rem;
+		color: #6b7280;
+	}
 
-  .store-slot, .hand-card {
-    padding: 8px 12px;
-    border-radius: 8px;
-    border: 2px solid #e5e7eb;
-    background: #f9fafb;
-    cursor: pointer;
-    font-size: 0.8rem;
-    transition: border-color 0.15s, background 0.15s;
-  }
+	.section-label {
+		margin: 0 0 8px;
+		font-size: 0.75rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		color: #9ca3af;
+	}
 
-  .store-slot.clickable {
-    border-color: #6366f1;
-    background: #eef2ff;
-    cursor: pointer;
-  }
+	.store-section {
+		padding: 1rem 1.5rem;
+		border-bottom: 1px solid #f3f4f6;
+	}
 
-  .store-slot.clickable:hover { background: #e0e7ff; }
-  .store-slot.empty { opacity: 0.4; cursor: default; }
+	.store-slots {
+		display: flex;
+		gap: 10px;
+	}
 
-  .hand-card.selected {
-    border-color: #6366f1;
-    background: #eef2ff;
-  }
+	.hand-section {
+		padding: 1rem 1.5rem;
+		flex: 1;
+	}
 
-  .hand-card:disabled { opacity: 0.5; cursor: default; }
+	.hand-grid {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+	}
 
-  .actions { margin-top: 16px; text-align: center; }
+	.card-slot {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 3px;
+		padding: 10px 14px;
+		border: 2px solid #e5e7eb;
+		border-radius: 8px;
+		background: white;
+		cursor: pointer;
+		min-width: 64px;
+		transition: border-color 0.1s, background 0.1s;
+		font-family: inherit;
+	}
 
-  .confirm-btn {
-    padding: 10px 24px;
-    background: #6366f1;
-    color: white;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    font-weight: 600;
-    font-size: 0.95rem;
-  }
+	.card-slot.small {
+		min-width: 52px;
+		padding: 7px 10px;
+	}
 
-  .confirm-btn:hover { background: #4f46e5; }
+	.card-slot:not(.disabled):hover {
+		border-color: #1d4ed8;
+	}
 
-  .empty-label { color: #9ca3af; font-style: italic; }
+	.card-slot.selected {
+		border-color: #1d4ed8;
+		background: #eff6ff;
+	}
+
+	.card-slot.disabled {
+		cursor: default;
+		opacity: 0.6;
+	}
+
+	.card-slot.empty {
+		border-style: dashed;
+		color: #d1d5db;
+		font-size: 1.2rem;
+		cursor: default;
+	}
+
+	.card-color {
+		font-size: 1.1rem;
+	}
+
+	.card-slot.small .card-color {
+		font-size: 0.9rem;
+	}
+
+	.card-cha {
+		font-size: 0.72rem;
+		font-weight: 700;
+		color: #374151;
+	}
+
+	.card-ability {
+		font-size: 0.6rem;
+		color: #7c3aed;
+		font-weight: 600;
+		text-align: center;
+	}
+
+	.panel-footer {
+		padding: 1rem 1.5rem 1.5rem;
+		border-top: 1px solid #e5e7eb;
+		display: flex;
+		gap: 10px;
+	}
+
+	.confirm-btn {
+		flex: 1;
+		padding: 10px;
+		background: #1d4ed8;
+		color: white;
+		border: none;
+		border-radius: 8px;
+		font-size: 0.95rem;
+		font-weight: 600;
+		cursor: pointer;
+	}
+
+	.confirm-btn:hover {
+		background: #1e40af;
+	}
+
+	.pass-btn {
+		padding: 10px 20px;
+		background: #f3f4f6;
+		color: #374151;
+		border: 1px solid #d1d5db;
+		border-radius: 8px;
+		font-size: 0.9rem;
+		cursor: pointer;
+	}
+
+	.pass-btn:hover {
+		background: #e5e7eb;
+	}
 </style>

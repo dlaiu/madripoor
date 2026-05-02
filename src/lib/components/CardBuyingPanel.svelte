@@ -34,6 +34,18 @@
 		return map[card.color] ?? '⚪';
 	}
 
+	const ABILITY_LABELS: Record<string, string> = {
+		scout: 'Scout', hometown: 'Hometown', pollster: 'Pollster',
+		hard_worker: 'Hard Wkr', independent: 'Indep.', mr_popular: 'Mr. Pop.',
+		disadvantage: 'Disadv.', coalition: 'Coalition', underdog: 'Underdog'
+	};
+
+	function abilityLabel(card: Card): string | null {
+		if (card.type === 'party_leader') return '★ Leader';
+		if (card.ability !== 'none') return ABILITY_LABELS[card.ability] ?? card.ability;
+		return null;
+	}
+
 	async function handleConfirmSwap() {
 		if (selectedStorePos === null || selectedHandCardId === null) return;
 		await buyCard(selectedStorePos, selectedHandCardId);
@@ -83,7 +95,7 @@
 					>
 						<span class="card-color">{colorLabel(card)}</span>
 						<span class="card-cha">CHA{card.charisma}</span>
-						{#if card.type === 'party_leader'}<span class="card-badge">★</span>{/if}
+						{#if abilityLabel(card)}<span class="card-ability">{abilityLabel(card)}</span>{/if}
 					</button>
 				{:else}
 					<div class="card-slot empty">—</div>
@@ -109,7 +121,7 @@
 				>
 					<span class="card-color">{colorLabel(card)}</span>
 					<span class="card-cha">CHA{card.charisma}</span>
-					{#if card.type === 'party_leader'}<span class="card-badge">★</span>{/if}
+					{#if abilityLabel(card)}<span class="card-ability">{abilityLabel(card)}</span>{/if}
 				</button>
 			{/each}
 		</div>
@@ -241,6 +253,13 @@
 		font-size: 0.72rem;
 		font-weight: 700;
 		color: #374151;
+	}
+
+	.card-ability {
+		font-size: 0.6rem;
+		color: #7c3aed;
+		font-weight: 600;
+		text-align: center;
 	}
 
 	.card-badge {

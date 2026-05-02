@@ -16,6 +16,11 @@
 
 	const WINNER_DOT: Record<string, string> = { human: '#16a34a', cpu: '#dc2626', tie: '#9ca3af' };
 	const WINNER_LABEL: Record<string, string> = { human: 'You', cpu: 'CPU', tie: 'Tie' };
+	const PILL_COLORS: Record<string, string> = {
+		pollster: '#7c3aed', disadvantage: '#dc2626', hometown: '#0369a1',
+		independent: '#0f766e', coalition: '#b45309', party_leader: '#6d28d9',
+		entrench: '#374151'
+	};
 
 	const roundWinner = $derived(game.currentRound.winner);
 	const isGameOver = $derived(game.phase === 'game_over');
@@ -33,12 +38,20 @@
 					<div class="tile-row" class:human-win={r.winner === 'human'} class:cpu-win={r.winner === 'cpu'} class:tied={r.winner === 'tie'}>
 						<span class="tile-num">#{r.tileId}</span>
 						<div class="votes-col">
-							<span class="votes-you" title="CHA{r.humanCard.charisma} × {r.humanRoll} = {r.humanScore}">
+							<span class="votes-you">
 								{r.humanScore}<span class="votes-detail"> ({r.humanCard.charisma}×{r.humanRoll})</span>
+								{#if r.humanBonuses?.rollType === 'pollster'}<span class="pill" style:background={PILL_COLORS.pollster}>Poll</span>{/if}
+								{#if r.humanBonuses?.rollType === 'disadvantage'}<span class="pill" style:background={PILL_COLORS.disadvantage}>Disadv</span>{/if}
+								{#if r.humanBonuses?.abilityLabel}<span class="pill" style:background={PILL_COLORS[r.humanCard.ability] ?? '#6b7280'}>+{r.humanBonuses.ability} {r.humanBonuses.abilityLabel}</span>{/if}
+								{#if r.humanBonuses?.entrench}<span class="pill" style:background={PILL_COLORS.entrench}>+2 Entrench</span>{/if}
 							</span>
 							<span class="vs">vs</span>
-							<span class="votes-cpu" title="CHA{r.cpuCard.charisma} × {r.cpuRoll} = {r.cpuScore}">
+							<span class="votes-cpu">
 								{r.cpuScore}<span class="votes-detail"> ({r.cpuCard.charisma}×{r.cpuRoll})</span>
+								{#if r.cpuBonuses?.rollType === 'pollster'}<span class="pill" style:background={PILL_COLORS.pollster}>Poll</span>{/if}
+								{#if r.cpuBonuses?.rollType === 'disadvantage'}<span class="pill" style:background={PILL_COLORS.disadvantage}>Disadv</span>{/if}
+								{#if r.cpuBonuses?.abilityLabel}<span class="pill" style:background={PILL_COLORS[r.cpuCard.ability] ?? '#6b7280'}>+{r.cpuBonuses.ability} {r.cpuBonuses.abilityLabel}</span>{/if}
+								{#if r.cpuBonuses?.entrench}<span class="pill" style:background={PILL_COLORS.entrench}>+2 Entrench</span>{/if}
 							</span>
 						</div>
 						<span class="winner-dot" style:background={WINNER_DOT[r.winner]}></span>
@@ -49,9 +62,15 @@
 					<div class="group-header" class:human-win={gr.winner === 'human'} class:cpu-win={gr.winner === 'cpu'} class:tied={gr.winner === 'tie'}>
 						<span class="tile-num">G{i + 1}</span>
 						<div class="votes-col">
-							<span class="votes-you">{gr.humanTotalScore}</span>
+							<span class="votes-you">
+								{gr.humanTotalScore}
+								{#if gr.humanEntrenchBonus}<span class="pill" style:background={PILL_COLORS.entrench}>+2 Entrench</span>{/if}
+							</span>
 							<span class="vs">vs</span>
-							<span class="votes-cpu">{gr.cpuTotalScore}</span>
+							<span class="votes-cpu">
+								{gr.cpuTotalScore}
+								{#if gr.cpuEntrenchBonus}<span class="pill" style:background={PILL_COLORS.entrench}>+2 Entrench</span>{/if}
+							</span>
 							<span class="group-tiles-label">tiles {gr.tileIds.join(',')}</span>
 						</div>
 						<span class="winner-dot" style:background={WINNER_DOT[gr.winner]}></span>
@@ -60,12 +79,18 @@
 						<div class="tile-row tile-row--indent" class:human-win={gr.winner === 'human'} class:cpu-win={gr.winner === 'cpu'} class:tied={gr.winner === 'tie'}>
 							<span class="tile-num">#{r.tileId}</span>
 							<div class="votes-col">
-								<span class="votes-you" title="CHA{r.humanCard.charisma} × {r.humanRoll} = {r.humanScore}">
+								<span class="votes-you">
 									{r.humanScore}<span class="votes-detail"> ({r.humanCard.charisma}×{r.humanRoll})</span>
+									{#if r.humanBonuses?.rollType === 'pollster'}<span class="pill" style:background={PILL_COLORS.pollster}>Poll</span>{/if}
+									{#if r.humanBonuses?.rollType === 'disadvantage'}<span class="pill" style:background={PILL_COLORS.disadvantage}>Disadv</span>{/if}
+									{#if r.humanBonuses?.abilityLabel}<span class="pill" style:background={PILL_COLORS[r.humanCard.ability] ?? '#6b7280'}>+{r.humanBonuses.ability} {r.humanBonuses.abilityLabel}</span>{/if}
 								</span>
 								<span class="vs">vs</span>
-								<span class="votes-cpu" title="CHA{r.cpuCard.charisma} × {r.cpuRoll} = {r.cpuScore}">
+								<span class="votes-cpu">
 									{r.cpuScore}<span class="votes-detail"> ({r.cpuCard.charisma}×{r.cpuRoll})</span>
+									{#if r.cpuBonuses?.rollType === 'pollster'}<span class="pill" style:background={PILL_COLORS.pollster}>Poll</span>{/if}
+									{#if r.cpuBonuses?.rollType === 'disadvantage'}<span class="pill" style:background={PILL_COLORS.disadvantage}>Disadv</span>{/if}
+									{#if r.cpuBonuses?.abilityLabel}<span class="pill" style:background={PILL_COLORS[r.cpuCard.ability] ?? '#6b7280'}>+{r.cpuBonuses.ability} {r.cpuBonuses.abilityLabel}</span>{/if}
 								</span>
 							</div>
 						</div>
@@ -197,6 +222,18 @@
 		font-weight: 400;
 		font-size: 0.7rem;
 		color: #9ca3af;
+	}
+
+	.pill {
+		display: inline-block;
+		font-size: 0.6rem;
+		font-weight: 600;
+		color: white;
+		border-radius: 4px;
+		padding: 1px 4px;
+		margin-left: 2px;
+		vertical-align: middle;
+		white-space: nowrap;
 	}
 
 	.vs {
