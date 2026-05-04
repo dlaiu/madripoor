@@ -84,16 +84,18 @@ This milestone proves the core game loop works before touching multiplayer.
 
 ---
 
-## Milestone 6 — Card Abilities & Solo Card Buying
+## ✅ Milestone 6 — Card Abilities & Solo Card Buying
 **Goal:** All special cards work correctly; solo mode reaches feature parity with multiplayer.
 
-- Party Leader, Hometown (CHA1/2/3), Pollster, Scout, Hard Worker (starting deck abilities)
-- Mr. Popular, Independent, Coalition, Underdog, Disadvantage (draw pile abilities)
-- Ability resolution order defined and enforced server-side
-- Visual feedback when an ability triggers
-- Solo card buying: draw pile + store UI for single-player mode; CPU buying logic
-
-Deliberately deferred because abilities are the most bug-prone part and the core loop needs to be solid first.
+- All 10 abilities implemented in both solo and multiplayer: Party Leader, Hometown, Pollster, Scout, Hard Worker, Mr. Popular, Independent, Coalition, Underdog, Disadvantage
+- Solo resolver now applies ability bonuses (Hometown, Independent, Coalition), Pollster 2d6, Disadvantage reroll, and Underdog entrenchment negation — previously silently ignored
+- Score breakdown pills in solo and MP results panels (ability, entrench, roll type)
+- Board ability badges on tiles during MP resolution
+- Solo scout phase: auto-peek at CPU card on scout's tile, optional swap with own card
+- Solo card buying: full-screen panel matching MP UI; CPU auto-buys after human
+- Hard Worker escalated CHA displayed correctly in hand, board, and buying panel across all phases
+- Shared-pool hand dealing for multiplayer (no card duplicated across hands)
+- `COLORED_TILE_COLORS` centralized in `hex.ts` — fixed Hometown never firing in either mode
 
 ---
 
@@ -102,7 +104,7 @@ Deliberately deferred because abilities are the most bug-prone part and the core
 
 - Phase indicator with clear player prompts ("Waiting for 2 players to place cards…")
 - Animated reveal, dice roll animations
-- Score breakdown visible after each tile resolves
+- ~~Score breakdown visible after each tile resolves~~ (done in M6 — ability pills in results panel)
 - Entrenchment UI hints: show previous-round placements during placement so players can identify entrenched cards
 - Mobile-friendly layout (people will want to play on phones)
 - Basic error states (disconnected player, page refresh recovery)
