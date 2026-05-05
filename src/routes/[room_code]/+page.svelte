@@ -495,7 +495,8 @@
 			line-height: 1.5;
 		}
 		.ready-btn {
-			width: 100%;
+			min-width: 140px;
+			flex-shrink: 0;
 		}
 	}
 </style>
