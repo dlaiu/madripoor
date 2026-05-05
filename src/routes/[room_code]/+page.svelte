@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { COLORED_TILE_COLORS } from '$lib/board/hex.js';
 	import Board from '$lib/board/Board.svelte';
 	import Lobby from '$lib/components/Lobby.svelte';
 	import CardHandMP from '$lib/components/CardHandMP.svelte';
@@ -34,7 +33,7 @@
 
 	let { data }: { data: PageData } = $props();
 
-	const coloredTiles = COLORED_TILE_COLORS;
+	const coloredTiles = $derived(mp.coloredTileColors);
 
 	let initialized = $state(false);
 	let showRules = $state(false);
@@ -180,7 +179,7 @@
 {:else if mp.phase === 'lobby'}
 	<Lobby />
 {:else}
-	<main class:has-overlay={hasOverlay}>
+	<main class:has-overlay={hasOverlay} class:has-hand={mp.phase === 'placement'}>
 		<header>
 			<div class="header-row">
 				<h1>Madripoor</h1>
@@ -337,9 +336,12 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		padding: 1.5rem 2rem 120px;
+		padding: 1.5rem 2rem;
 		font-family: sans-serif;
-		min-height: 100vh;
+	}
+
+	main.has-hand {
+		padding-bottom: 120px;
 	}
 
 	main.has-overlay {

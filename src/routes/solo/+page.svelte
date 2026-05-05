@@ -9,11 +9,10 @@
 	import { game, placeCard, unplaceCard, startScouting, soloScoutChooseSwapTarget, gerryClickTile, confirmMrPopularColorSolo, cancelMrPopularPlacementSolo, soloPartyLeaderPenalty } from '$lib/game/gameState.svelte.js';
 	import SoloScoutPanel from '$lib/components/SoloScoutPanel.svelte';
 	import RulesModal from '$lib/components/RulesModal.svelte';
-	import { COLORED_TILE_COLORS } from '$lib/board/hex.js';
 
 	let showRules = $state(false);
 
-	const coloredTiles = COLORED_TILE_COLORS;
+	const coloredTiles = $derived(game.coloredTileColors);
 
 	function handleTileClick(tileId: number) {
 		if (game.selectedCard) {
@@ -91,7 +90,7 @@
 	});
 </script>
 
-<main class:has-overlay={hasOverlay}>
+<main class:has-overlay={hasOverlay} class:has-hand={showHand}>
 	<header>
 		<div class="header-row">
 			<h1>Madripoor</h1>
@@ -191,9 +190,12 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		padding: 1.5rem 2rem 120px;
+		padding: 1.5rem 2rem;
 		font-family: sans-serif;
-		min-height: 100vh;
+	}
+
+	main.has-hand {
+		padding-bottom: 120px;
 	}
 
 	main.has-overlay {

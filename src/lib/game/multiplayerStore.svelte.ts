@@ -14,7 +14,8 @@ import type {
 	ResolverContext,
 	TileGroup
 } from './types.js';
-import { COLORED_TILE_COLORS, getNeighbors } from '../board/hex.js';
+import { seededColoredTiles, getNeighbors } from '../board/hex.js';
+import type { TileColor } from '../board/hex.js';
 import { supabase } from '../supabase.js';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
@@ -83,6 +84,7 @@ export const mp = $state({
 	scoutingPlayerIds: [] as string[],
 	latestScoutSwap: null as { scoutTileId: number; targetTileId: number; actorUserId: string; actorName: string } | null,
 
+	coloredTileColors: {} as Record<number, TileColor>,
 	error: null as string | null
 });
 
@@ -190,6 +192,7 @@ export async function initMultiplayer(
 	mp.gameId = gameId;
 	mp.myUserId = myUserId;
 	mp.myPlayerIndex = myPlayerIndex;
+	mp.coloredTileColors = seededColoredTiles(gameId);
 
 	const [players, gameRes] = await Promise.all([
 		db.getGamePlayers(gameId),
@@ -604,7 +607,7 @@ async function runResolution(): Promise<void> {
 
 	const players = await db.getGamePlayers(mp.gameId);
 	const ctx: ResolverContext = {
-		coloredTileColors: COLORED_TILE_COLORS,
+		coloredTileColors: mp.coloredTileColors,
 		hardWorkerLevels: mp.hardWorkerLevels,
 		playerHands: Object.fromEntries(players.map((p) => [p.user_id, p.hand_json ?? []]))
 	};

@@ -8,7 +8,8 @@ import {
 } from './groups.js';
 import { cpuPlaceCards, resolveRound } from './resolver.js';
 import type { Card, CardColor, GameState, PlayerKey, RoundState } from './types.js';
-import { COLORED_TILE_COLORS, getNeighbors, TILES } from '../board/hex.js';
+import { randomColoredTiles, getNeighbors, TILES } from '../board/hex.js';
+import type { TileColor } from '../board/hex.js';
 
 const TILE_IDS = TILES.map((t) => t.id);
 
@@ -26,7 +27,7 @@ function freshRound(roundNumber: number): RoundState {
 	};
 }
 
-export const game: GameState = $state({
+export const game: GameState & { coloredTileColors: Record<number, TileColor> } = $state({
 	phase: 'placement',
 	roundWins: { human: 0, cpu: 0 },
 	humanHand: buildHand('human'),
@@ -41,7 +42,8 @@ export const game: GameState = $state({
 	mrPopularPending: null,
 	humanSwapsUsed: 0,
 	humanMaxSwaps: 1,
-	soloScoutState: null
+	soloScoutState: null,
+	coloredTileColors: randomColoredTiles()
 });
 
 export function soloHardWorkerEarnedCha(cardId: string): number | null {
@@ -73,6 +75,7 @@ export function resetGame(): void {
 	game.humanSwapsUsed = 0;
 	game.humanMaxSwaps = 1;
 	game.soloScoutState = null;
+	game.coloredTileColors = randomColoredTiles();
 }
 
 export function selectCard(card: Card): void {
@@ -189,7 +192,7 @@ export function resolve(): void {
 	const prev = game.history.length > 0 ? game.history[game.history.length - 1] : null;
 
 	const ctx = {
-		coloredTileColors: COLORED_TILE_COLORS,
+		coloredTileColors: game.coloredTileColors,
 		hardWorkerLevels: game.hardWorkerLevels,
 		playerHands: {} as Record<string, Card[]>
 	};

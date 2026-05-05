@@ -57,6 +57,32 @@ export const COLORED_TILE_COLORS: Record<number, TileColor> = {
 	2: 'green',  9: 'green',
 };
 
+function buildColoredTiles(shuffledIds: number[]): Record<number, TileColor> {
+	const colors: TileColor[] = ['red', 'red', 'blue', 'blue', 'green', 'green'];
+	return Object.fromEntries(shuffledIds.slice(0, 6).map((id, i) => [id, colors[i]]));
+}
+
+export function randomColoredTiles(): Record<number, TileColor> {
+	const ids = TILES.map(t => t.id);
+	for (let i = ids.length - 1; i > 0; i--) {
+		const j = Math.floor(Math.random() * (i + 1));
+		[ids[i], ids[j]] = [ids[j], ids[i]];
+	}
+	return buildColoredTiles(ids);
+}
+
+export function seededColoredTiles(seed: string): Record<number, TileColor> {
+	let n = 0;
+	for (let i = 0; i < seed.length; i++) n = Math.imul(31, n) + seed.charCodeAt(i) | 0;
+	const rand = () => { n = Math.imul(1664525, n) + 1013904223 | 0; return (n >>> 0) / 0xFFFFFFFF; };
+	const ids = TILES.map(t => t.id);
+	for (let i = ids.length - 1; i > 0; i--) {
+		const j = Math.floor(rand() * (i + 1));
+		[ids[i], ids[j]] = [ids[j], ids[i]];
+	}
+	return buildColoredTiles(ids);
+}
+
 export const TILE_COLORS: Record<TileColor, string> = {
 	red:   '#f87171',
 	blue:  '#60a5fa',
