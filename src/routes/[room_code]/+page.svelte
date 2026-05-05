@@ -494,9 +494,8 @@
 			text-align: center;
 			line-height: 1.5;
 		}
-		.ready-btn {
-			min-width: 140px;
-			flex-shrink: 0;
+		.placement-bar {
+			flex-direction: column;
 		}
 	}
 </style>
