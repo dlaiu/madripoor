@@ -293,7 +293,8 @@
 			line-height: 1.5;
 		}
 		.confirm-btn {
-			width: 100%;
+			min-width: 140px;
+			flex-shrink: 0;
 		}
 	}
 </style>
