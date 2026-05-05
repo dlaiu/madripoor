@@ -157,7 +157,7 @@
 				y={cy + size * 0.26}
 				text-anchor="middle"
 				dominant-baseline="central"
-				font-size={size * 0.17}
+				font-size={size * 0.22}
 				font-family="sans-serif"
 				font-weight="600"
 				fill="#7c3aed"
@@ -168,12 +168,13 @@
 		<!-- Tile ID — small, top of card -->
 		<text
 			x={cx}
-			y={cy - cardH / 2 + size * 0.15}
+			y={cy - cardH / 2 - size * 0.12}
 			text-anchor="middle"
 			dominant-baseline="central"
-			font-size={size * 0.17}
+			font-size={size * 0.22}
 			font-family="sans-serif"
-			fill="rgba(0,0,0,0.4)"
+			font-weight="600"
+			fill="#333"
 			pointer-events="none"
 		>{id}</text>
 
