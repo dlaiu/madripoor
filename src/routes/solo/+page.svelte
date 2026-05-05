@@ -292,5 +292,8 @@
 			text-align: center;
 			line-height: 1.5;
 		}
+		.confirm-btn {
+			width: 100%;
+		}
 	}
 </style>

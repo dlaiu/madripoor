@@ -494,5 +494,8 @@
 			text-align: center;
 			line-height: 1.5;
 		}
+		.ready-btn {
+			width: 100%;
+		}
 	}
 </style>
