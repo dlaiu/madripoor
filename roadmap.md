@@ -99,15 +99,19 @@ This milestone proves the core game loop works before touching multiplayer.
 
 ---
 
-## Milestone 7 — UX Polish for Playtesting
+## ✅ Milestone 7 — UX Polish for Playtesting
 **Goal:** Hand this to someone who hasn't read the rules and have them figure it out.
 
-- Phase indicator with clear player prompts ("Waiting for 2 players to place cards…")
-- Animated reveal, dice roll animations
+- Phase indicators with clear player prompts for every game phase (solo + MP)
+- Animated reveal: staggered tile result pop-in (scale+fade) and results panel row slide-in
+- Dice roll animation: 🎲 bounces on each board tile before win/loss result settles
 - ~~Score breakdown visible after each tile resolves~~ (done in M6 — ability pills in results panel)
-- Entrenchment UI hints: show previous-round placements during placement so players can identify entrenched cards
-- Mobile-friendly layout (people will want to play on phones)
-- Basic error states (disconnected player, page refresh recovery)
+- Entrenchment hints: +2 badge on hand cards, gold tile highlight for the specific entrenched tile
+- Mobile-friendly layout: bottom-sheet overlays, smaller cards with emoji ability labels
+- Basic error states: Realtime disconnect detection, user-action failure toasts (auto-dismiss), refetch on reconnect
+- Rules & ability reference modal: hamburger button accessible from any game phase
+- Colored tiles randomized each game (solo: Math.random; MP: seeded from gameId so all clients agree)
+- Fixed: page no longer scrolls when card hand is not visible
 
 ---
 
