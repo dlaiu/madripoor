@@ -76,6 +76,19 @@
 		overflow: hidden;
 	}
 
+	@media (max-width: 640px) {
+		.panel {
+			top: auto;
+			left: 0;
+			width: 100%;
+			max-height: 42vh;
+			overflow-y: auto;
+			border-left: none;
+			border-top: 1px solid #e5e7eb;
+			border-radius: 12px 12px 0 0;
+		}
+	}
+
 	h2 {
 		margin: 0;
 		padding: 16px 16px 10px;

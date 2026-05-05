@@ -155,12 +155,32 @@ export function clearSession(): void {
 	}
 }
 
+// ── Error helper ───────────────────────────────────────────────────────────────
+
+function reportError(msg: string, e?: unknown): void {
+	console.error(msg, e);
+	mp.error = msg;
+}
+
 // ── Realtime channel ref ───────────────────────────────────────────────────────
 
 let _channel: RealtimeChannel | null = null;
 let _revealTriggered = false;
 
 // ── Init ───────────────────────────────────────────────────────────────────────
+
+async function refetchGameState(gameId: string): Promise<void> {
+	const [players, gameRes] = await Promise.all([
+		db.getGamePlayers(gameId),
+		supabase.from('games').select('*').eq('id', gameId).single()
+	]);
+	const gameRow = gameRes.data;
+	if (!gameRow) return;
+	handleGameChange({ new: gameRow as unknown as Record<string, unknown> });
+	for (const row of players) {
+		handlePlayersChange({ new: row as unknown as Record<string, unknown> });
+	}
+}
 
 export async function initMultiplayer(
 	gameId: string,
@@ -280,7 +300,14 @@ function subscribeRealtime(gameId: string): void {
 			},
 			handleResultsChange
 		)
-		.subscribe();
+		.subscribe((status) => {
+			if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+				mp.error = 'Connection lost — trying to reconnect…';
+			} else if (status === 'SUBSCRIBED') {
+				if (mp.error?.startsWith('Connection lost')) mp.error = null;
+				if (mp.gameId) void refetchGameState(mp.gameId);
+			}
+		});
 }
 
 function handleGameChange(payload: { new: Record<string, unknown> }): void {
@@ -329,7 +356,7 @@ function handlePlayersChange(payload: { new: Record<string, unknown> }): void {
 		const allReady = mp.players.length === mp.maxPlayers && mp.players.every((p) => p.isReady);
 		if (allReady && !_revealTriggered) {
 			_revealTriggered = true;
-			db.updatePhase(mp.gameId, 'scouting').catch(console.error);
+			db.updatePhase(mp.gameId, 'scouting').catch(e => reportError('Sync error — try refreshing', e));
 		}
 	}
 
@@ -346,7 +373,7 @@ function handlePlayersChange(payload: { new: Record<string, unknown> }): void {
 		const allDone = mp.players.length === mp.maxPlayers &&
 			mp.players.every((p) => p.scoutDone);
 		if (allDone) {
-			db.updatePhase(mp.gameId, 'revealing').catch(console.error);
+			db.updatePhase(mp.gameId, 'revealing').catch(e => reportError('Sync error — try refreshing', e));
 		}
 	}
 
@@ -362,14 +389,14 @@ function handlePlayersChange(payload: { new: Record<string, unknown> }): void {
 			if (req.discardedCard) newDrawPile.push(req.discardedCard);
 			const newStore = [...mp.cardStore];
 			newStore[req.storePosition] = newCard;
-			db.replenishStoreSlot(mp.gameId, newStore, newDrawPile).catch(console.error);
+			db.replenishStoreSlot(mp.gameId, newStore, newDrawPile).catch(e => reportError('Sync error — try refreshing', e));
 		}
 
 		// Check if this player's turn is done
 		const buyer = mp.players.find((p) => p.userId === row.user_id);
 		const maxSwaps = getBuyerMaxSwaps(row.user_id);
 		if (req.action === 'done' || (buyer && row.swaps_used >= maxSwaps)) {
-			advanceBuyingTurn().catch(console.error);
+			advanceBuyingTurn().catch(e => reportError('Sync error — try refreshing', e));
 		}
 	}
 }
@@ -441,7 +468,7 @@ function handleResultsChange(payload: { new: Record<string, unknown> }): void {
 
 function onPhaseTransition(from: MultiplayerPhase, to: MultiplayerPhase): void {
 	if (to === 'revealing' && isHost()) {
-		runResolution().catch(console.error);
+		runResolution().catch(e => reportError('Sync error — try refreshing', e));
 	}
 
 	if (to === 'scouting' && mp.gameId) {
@@ -460,7 +487,7 @@ function onPhaseTransition(from: MultiplayerPhase, to: MultiplayerPhase): void {
 						if (mp.phase !== 'scouting' || mp.gameId !== gameId) return;
 						const allDone = players.length >= mp.maxPlayers &&
 							players.every((p) => p.scout_done ?? false);
-						if (allDone) db.updatePhase(gameId, 'revealing').catch(console.error);
+						if (allDone) db.updatePhase(gameId, 'revealing').catch(e => reportError('Sync error — try refreshing', e));
 					});
 				})
 				.catch(console.error);
@@ -731,9 +758,13 @@ export async function placeCard(tileId: number): Promise<void> {
 	const myP = myState();
 	if (myP) myP.placedCount = Object.keys(mp.myPlacements).length;
 
-	await db.submitPlacement(mp.gameId, mp.roundNumber, tileId, card);
-	if (displaced) await db.removePlacement(mp.gameId, mp.roundNumber, tileId);
-	await db.setPlacedCount(mp.gameId, Object.keys(mp.myPlacements).length);
+	try {
+		await db.submitPlacement(mp.gameId, mp.roundNumber, tileId, card);
+		if (displaced) await db.removePlacement(mp.gameId, mp.roundNumber, tileId);
+		await db.setPlacedCount(mp.gameId, Object.keys(mp.myPlacements).length);
+	} catch (e) {
+		reportError('Action failed — please try again', e);
+	}
 }
 
 export async function confirmMrPopularColor(color: CardColor): Promise<void> {
@@ -751,9 +782,13 @@ export async function confirmMrPopularColor(color: CardColor): Promise<void> {
 	const myP = myState();
 	if (myP) myP.placedCount = Object.keys(mp.myPlacements).length;
 
-	await db.submitPlacement(mp.gameId, mp.roundNumber, tileId, card, color);
-	if (displaced) await db.removePlacement(mp.gameId, mp.roundNumber, tileId);
-	await db.setPlacedCount(mp.gameId, Object.keys(mp.myPlacements).length);
+	try {
+		await db.submitPlacement(mp.gameId, mp.roundNumber, tileId, card, color);
+		if (displaced) await db.removePlacement(mp.gameId, mp.roundNumber, tileId);
+		await db.setPlacedCount(mp.gameId, Object.keys(mp.myPlacements).length);
+	} catch (e) {
+		reportError('Action failed — please try again', e);
+	}
 }
 
 export function cancelMrPopularPlacement(): void {
@@ -772,15 +807,23 @@ export async function unplaceCard(tileId: number): Promise<void> {
 	const myP = myState();
 	if (myP) myP.placedCount = Object.keys(mp.myPlacements).length;
 
-	await db.removePlacement(mp.gameId, mp.roundNumber, tileId);
-	await db.setPlacedCount(mp.gameId, Object.keys(mp.myPlacements).length);
+	try {
+		await db.removePlacement(mp.gameId, mp.roundNumber, tileId);
+		await db.setPlacedCount(mp.gameId, Object.keys(mp.myPlacements).length);
+	} catch (e) {
+		reportError('Action failed — please try again', e);
+	}
 }
 
 export async function setReady(): Promise<void> {
 	if (!mp.gameId || Object.keys(mp.myPlacements).length !== 15) return;
 	const myP = myState();
 	if (myP) myP.isReady = true;
-	await db.setReady(mp.gameId);
+	try {
+		await db.setReady(mp.gameId);
+	} catch (e) {
+		reportError('Action failed — please try again', e);
+	}
 }
 
 export async function gerryClickTile(tileId: number): Promise<void> {
@@ -912,20 +955,32 @@ export async function buyCard(storePosition: number, handCardId: string): Promis
 	const newHand = mp.myHand.filter((c) => c.id !== handCardId).concat(storeCard);
 	mp.myHand = newHand;
 
-	await db.submitBuyAction(mp.gameId, newHand, storePosition, handCardId, discardedCard);
+	try {
+		await db.submitBuyAction(mp.gameId, newHand, storePosition, handCardId, discardedCard);
+	} catch (e) {
+		reportError('Action failed — please try again', e);
+	}
 }
 
 export async function passBuyTurn(): Promise<void> {
 	if (!mp.gameId || !mp.myUserId) return;
 	if (mp.buyingTurnUserId !== mp.myUserId) return;
-	await db.passBuyTurn(mp.gameId);
+	try {
+		await db.passBuyTurn(mp.gameId);
+	} catch (e) {
+		reportError('Action failed — please try again', e);
+	}
 }
 
 // ── Scout actions ──────────────────────────────────────────────────────────────
 
 export async function keepScout(): Promise<void> {
 	if (!mp.gameId) return;
-	await db.setScoutDone(mp.gameId);
+	try {
+		await db.setScoutDone(mp.gameId);
+	} catch (e) {
+		reportError('Action failed — please try again', e);
+	}
 }
 
 export async function swapScout(scoutTileId: number, targetTileId: number): Promise<void> {

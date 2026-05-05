@@ -79,6 +79,17 @@
 		return colors[idx % colors.length];
 	}
 
+	// Sequential animation indices: solo tiles first, then group header + per-tiles
+	const soloCount = $derived(mp.tileResults.length);
+	const groupStartIndices = $derived.by((): number[] => {
+		let i = soloCount;
+		return mp.groupResults.map(gr => {
+			const start = i;
+			i += 1 + gr.perTile.length;
+			return start;
+		});
+	});
+
 	async function handleNextRound() {
 		await advanceToNextRound();
 	}
@@ -115,9 +126,9 @@
 			<h2>Round {mp.roundNumber} — Vote Tally</h2>
 
 			<div class="tile-list">
-				{#each mp.tileResults as r (r.tileId)}
+				{#each mp.tileResults as r, ri (r.tileId)}
 					{@const isMine = r.winner === mp.myUserId}
-					<div class="tile-row" class:my-win={isMine} class:opp-win={!isMine}>
+					<div class="tile-row" class:my-win={isMine} class:opp-win={!isMine} style:--anim-index={ri}>
 						<span class="tile-num">#{r.tileId}</span>
 						<div class="scores-col">
 							{#each mp.players as player}
@@ -136,7 +147,7 @@
 
 				{#each mp.groupResults as gr, i (gr.groupId)}
 					{@const isMine = gr.winner === mp.myUserId}
-					<div class="group-header" class:my-win={isMine} class:opp-win={!isMine}>
+					<div class="group-header" class:my-win={isMine} class:opp-win={!isMine} style:--anim-index={groupStartIndices[i]}>
 						<span class="tile-num">G{i + 1}</span>
 						<div class="scores-col">
 							{#each mp.players as player}
@@ -151,9 +162,9 @@
 						</div>
 						<span class="winner-dot" style:background={scoreColor(gr.winner)}></span>
 					</div>
-					{#each gr.perTile as r (r.tileId)}
+					{#each gr.perTile as r, ri (r.tileId)}
 						{@const isMine = r.winner === mp.myUserId}
-						<div class="tile-row tile-row--indent" class:my-win={isMine} class:opp-win={!isMine}>
+						<div class="tile-row tile-row--indent" class:my-win={isMine} class:opp-win={!isMine} style:--anim-index={groupStartIndices[i] + 1 + ri}>
 							<span class="tile-num">#{r.tileId}</span>
 							<div class="scores-col">
 								{#each mp.players as player}
@@ -229,6 +240,19 @@
 		overflow: hidden;
 	}
 
+	@media (max-width: 640px) {
+		.panel {
+			top: auto;
+			left: 0;
+			width: 100%;
+			max-height: 50vh;
+			overflow-y: auto;
+			border-left: none;
+			border-top: 1px solid #e5e7eb;
+			border-radius: 12px 12px 0 0;
+		}
+	}
+
 	h2 {
 		margin: 0;
 		padding: 16px 16px 10px;
@@ -248,6 +272,11 @@
 		padding: 24px;
 	}
 
+	@keyframes rowIn {
+		from { opacity: 0; transform: translateX(10px); }
+		to   { opacity: 1; transform: translateX(0); }
+	}
+
 	.tile-list {
 		flex: 1;
 		overflow-y: auto;
@@ -261,6 +290,8 @@
 		padding: 5px 14px;
 		border-bottom: 1px solid #f9fafb;
 		font-size: 0.78rem;
+		animation: rowIn 0.18s ease-out both;
+		animation-delay: calc(var(--anim-index, 0) * 70ms);
 	}
 
 	.tile-row.my-win  { background: #f0fdf4; }
@@ -323,6 +354,8 @@
 		font-weight: 700;
 		border-top: 2px solid #e5e7eb;
 		margin-top: 2px;
+		animation: rowIn 0.18s ease-out both;
+		animation-delay: calc(var(--anim-index, 0) * 70ms);
 	}
 
 	.group-header.my-win  { background: #f0fdf4; }

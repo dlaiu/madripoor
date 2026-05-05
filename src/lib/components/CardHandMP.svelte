@@ -1,6 +1,13 @@
 <script lang="ts">
 	import { mp, selectCard, myPartyLeaderPenalty, hardWorkerEarnedCha } from '$lib/game/multiplayerStore.svelte.js';
 	import CardComponent from './CardComponent.svelte';
+
+	const entrenchableCardIds = $derived.by((): Set<string> => {
+		const prev = mp.history.at(-1);
+		if (!prev || !mp.myUserId) return new Set();
+		const myPrev = prev.allPlacements[mp.myUserId] ?? {};
+		return new Set(Object.values(myPrev).map(c => c.id));
+	});
 </script>
 
 <div class="hand-panel">
@@ -10,6 +17,7 @@
 				{card}
 				isSelected={mp.selectedCard?.id === card.id}
 				onClick={() => selectCard(card)}
+				isEntrenchable={entrenchableCardIds.has(card.id)}
 				displayChaOverride={
 				myPartyLeaderPenalty() && card.type === 'party_leader' ? 1 :
 				card.ability === 'hard_worker' ? hardWorkerEarnedCha(card.id) :
@@ -38,5 +46,14 @@
 		overflow-x: auto;
 		padding-bottom: 2px;
 		justify-content: center;
+	}
+
+	@media (max-width: 640px) {
+		.hand-panel {
+			padding: 8px 8px 10px;
+		}
+		.hand-inner {
+			justify-content: flex-start;
+		}
 	}
 </style>

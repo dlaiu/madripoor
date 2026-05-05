@@ -22,6 +22,8 @@
 		isGerrymandering?: boolean;
 		onTileClick?: (tileId: number) => void;
 		tileAbilityBadges?: Record<number, { label: string; color: string }[]>;
+		entrenchHints?: Record<number, string>;
+		entrenchTargetTiles?: Set<number>;
 	}
 
 	let {
@@ -38,7 +40,9 @@
 		gerrySelectedTileId = null,
 		isGerrymandering = false,
 		onTileClick,
-		tileAbilityBadges
+		tileAbilityBadges,
+		entrenchHints,
+		entrenchTargetTiles
 	}: Props = $props();
 
 	const mpResultInfo = $derived.by(() => {
@@ -101,7 +105,7 @@
 </script>
 
 <svg {viewBox} xmlns="http://www.w3.org/2000/svg" class="board">
-	{#each positions as tile (tile.id)}
+	{#each positions as tile, tileIndex (tile.id)}
 		{@const groupMeta = tileGroupMap.get(tile.id)}
 		<Hex
 			id={tile.id}
@@ -124,6 +128,9 @@
 			{isGerrymandering}
 			onTileClick={onTileClick ? () => onTileClick!(tile.id) : undefined}
 			abilityBadges={tileAbilityBadges?.[tile.id]}
+			isEntrenched={!!entrenchHints && placements?.[tile.id]?.id === entrenchHints[tile.id]}
+			isEntrenchTarget={entrenchTargetTiles?.has(tile.id) ?? false}
+			resultAnimIndex={tileIndex}
 		/>
 	{/each}
 </svg>

@@ -24,6 +24,17 @@
 
 	const roundWinner = $derived(game.currentRound.winner);
 	const isGameOver = $derived(game.phase === 'game_over');
+
+	// Sequential animation indices: solo tiles first, then group header + per-tiles
+	const soloCount = $derived(game.currentRound.results.length);
+	const groupStartIndices = $derived.by((): number[] => {
+		let i = soloCount;
+		return game.currentRound.groupResults.map(gr => {
+			const start = i;
+			i += 1 + gr.perTile.length; // header + per-tile rows
+			return start;
+		});
+	});
 </script>
 
 {#if show}
@@ -34,8 +45,8 @@
 			<h2>Round {game.currentRound.roundNumber} — Vote Tally</h2>
 
 			<div class="tile-list">
-				{#each game.currentRound.results as r (r.tileId)}
-					<div class="tile-row" class:human-win={r.winner === 'human'} class:cpu-win={r.winner === 'cpu'} class:tied={r.winner === 'tie'}>
+				{#each game.currentRound.results as r, ri (r.tileId)}
+					<div class="tile-row" class:human-win={r.winner === 'human'} class:cpu-win={r.winner === 'cpu'} class:tied={r.winner === 'tie'} style:--anim-index={ri}>
 						<span class="tile-num">#{r.tileId}</span>
 						<div class="votes-col">
 							<span class="votes-you">
@@ -59,7 +70,7 @@
 				{/each}
 
 				{#each game.currentRound.groupResults as gr, i (gr.groupId)}
-					<div class="group-header" class:human-win={gr.winner === 'human'} class:cpu-win={gr.winner === 'cpu'} class:tied={gr.winner === 'tie'}>
+					<div class="group-header" class:human-win={gr.winner === 'human'} class:cpu-win={gr.winner === 'cpu'} class:tied={gr.winner === 'tie'} style:--anim-index={groupStartIndices[i]}>
 						<span class="tile-num">G{i + 1}</span>
 						<div class="votes-col">
 							<span class="votes-you">
@@ -75,8 +86,8 @@
 						</div>
 						<span class="winner-dot" style:background={WINNER_DOT[gr.winner]}></span>
 					</div>
-					{#each gr.perTile as r (r.tileId)}
-						<div class="tile-row tile-row--indent" class:human-win={gr.winner === 'human'} class:cpu-win={gr.winner === 'cpu'} class:tied={gr.winner === 'tie'}>
+					{#each gr.perTile as r, ri (r.tileId)}
+						<div class="tile-row tile-row--indent" class:human-win={gr.winner === 'human'} class:cpu-win={gr.winner === 'cpu'} class:tied={gr.winner === 'tie'} style:--anim-index={groupStartIndices[i] + 1 + ri}>
 							<span class="tile-num">#{r.tileId}</span>
 							<div class="votes-col">
 								<span class="votes-you">
@@ -154,6 +165,19 @@
 		overflow: hidden;
 	}
 
+	@media (max-width: 640px) {
+		.panel {
+			top: auto;
+			left: 0;
+			width: 100%;
+			max-height: 50vh;
+			overflow-y: auto;
+			border-left: none;
+			border-top: 1px solid #e5e7eb;
+			border-radius: 12px 12px 0 0;
+		}
+	}
+
 	h2 {
 		margin: 0;
 		padding: 16px 16px 10px;
@@ -173,6 +197,11 @@
 		padding: 24px;
 	}
 
+	@keyframes rowIn {
+		from { opacity: 0; transform: translateX(10px); }
+		to   { opacity: 1; transform: translateX(0); }
+	}
+
 	.tile-list {
 		flex: 1;
 		overflow-y: auto;
@@ -186,6 +215,8 @@
 		padding: 5px 14px;
 		border-bottom: 1px solid #f9fafb;
 		font-size: 0.78rem;
+		animation: rowIn 0.18s ease-out both;
+		animation-delay: calc(var(--anim-index, 0) * 70ms);
 	}
 
 	.tile-row.human-win { background: #f0fdf4; }
@@ -257,6 +288,8 @@
 		font-weight: 700;
 		border-top: 2px solid #e5e7eb;
 		margin-top: 2px;
+		animation: rowIn 0.18s ease-out both;
+		animation-delay: calc(var(--anim-index, 0) * 70ms);
 	}
 
 	.group-header.human-win { background: #f0fdf4; }

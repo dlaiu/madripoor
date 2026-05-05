@@ -8,7 +8,10 @@
 	import SoloBuyingPanel from '$lib/components/SoloBuyingPanel.svelte';
 	import { game, placeCard, unplaceCard, startScouting, soloScoutChooseSwapTarget, gerryClickTile, confirmMrPopularColorSolo, cancelMrPopularPlacementSolo, soloPartyLeaderPenalty } from '$lib/game/gameState.svelte.js';
 	import SoloScoutPanel from '$lib/components/SoloScoutPanel.svelte';
+	import RulesModal from '$lib/components/RulesModal.svelte';
 	import { COLORED_TILE_COLORS } from '$lib/board/hex.js';
+
+	let showRules = $state(false);
 
 	const coloredTiles = COLORED_TILE_COLORS;
 
@@ -53,6 +56,24 @@
 		undefined
 	);
 
+	const entrenchHints = $derived.by((): Record<number, string> => {
+		if (game.phase !== 'placement') return {};
+		const prev = game.history.at(-1);
+		if (!prev) return {};
+		return Object.fromEntries(
+			Object.entries(prev.humanPlacements).map(([tid, c]) => [Number(tid), c.id])
+		);
+	});
+
+	const entrenchTargetTiles = $derived.by((): Set<number> => {
+		if (!game.selectedCard || Object.keys(entrenchHints).length === 0) return new Set();
+		return new Set(
+			Object.entries(entrenchHints)
+				.filter(([, cardId]) => cardId === game.selectedCard!.id)
+				.map(([tid]) => Number(tid))
+		);
+	});
+
 	// Override displayed CHA for placed cards (Party Leader penalty, Hard Worker escalation) across all phases
 	const boardCharismaOverrides = $derived.by(() => {
 		const overrides: Record<number, number> = {};
@@ -72,7 +93,10 @@
 
 <main class:has-overlay={hasOverlay}>
 	<header>
-		<h1>Madripoor</h1>
+		<div class="header-row">
+			<h1>Madripoor</h1>
+			<button class="rules-btn" onclick={() => showRules = true} aria-label="Rules">☰</button>
+		</div>
 		<div class="round-info">
 			Round {game.currentRound.roundNumber}
 			&nbsp;·&nbsp;
@@ -89,9 +113,33 @@
 					Reveal Cards →
 				</button>
 			</div>
+		{:else if game.phase === 'scouting'}
+			<div class="placement-bar">
+				<span class="phase-hint">Scout phase — make your decision below</span>
+			</div>
+		{:else if game.phase === 'revealing'}
+			<div class="placement-bar">
+				<span class="phase-hint">Flipping cards…</span>
+			</div>
+		{:else if game.phase === 'card_buying'}
+			<div class="placement-bar">
+				<span class="phase-hint">Card buying — choose your swaps below</span>
+			</div>
+		{:else if game.phase === 'resolution'}
+			<div class="placement-bar">
+				<span class="phase-hint">Round results →</span>
+			</div>
+		{:else if game.phase === 'round_end'}
+			<div class="placement-bar">
+				<span class="phase-hint">Round complete — see results →</span>
+			</div>
 		{:else if game.phase === 'gerrymandering'}
 			<div class="placement-bar">
 				<span class="phase-hint">{gerryHintText()}</span>
+			</div>
+		{:else if game.phase === 'game_over'}
+			<div class="placement-bar">
+				<span class="phase-hint">Game over</span>
 			</div>
 		{/if}
 	</header>
@@ -106,6 +154,8 @@
 		gerrySelectedTileId={game.phase === 'gerrymandering' ? game.gerrySelectedTileId : null}
 		isGerrymandering={game.phase === 'gerrymandering'}
 		onTileClick={tileClickHandler}
+		{entrenchHints}
+		{entrenchTargetTiles}
 	/>
 
 	{#if showHand}
@@ -132,6 +182,10 @@
 	/>
 {/if}
 
+{#if showRules}
+	<RulesModal onClose={() => showRules = false} />
+{/if}
+
 <style>
 	main {
 		display: flex;
@@ -156,10 +210,32 @@
 		gap: 6px;
 	}
 
+	.header-row {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		width: 100%;
+		max-width: 600px;
+	}
+
 	h1 {
 		margin: 0;
 		font-size: 1.5rem;
 		letter-spacing: 0.05em;
+	}
+
+	.rules-btn {
+		background: none;
+		border: none;
+		font-size: 1.3rem;
+		cursor: pointer;
+		color: #9ca3af;
+		padding: 4px 8px;
+		line-height: 1;
+	}
+
+	.rules-btn:hover {
+		color: #374151;
 	}
 
 	.round-info {
@@ -200,5 +276,19 @@
 
 	.confirm-btn:not(:disabled):hover {
 		background: #15803d;
+	}
+
+	@media (max-width: 640px) {
+		main {
+			padding-left: 0.75rem;
+			padding-right: 0.75rem;
+		}
+		main.has-overlay {
+			padding-right: 0.75rem;
+		}
+		.round-info {
+			text-align: center;
+			line-height: 1.5;
+		}
 	}
 </style>

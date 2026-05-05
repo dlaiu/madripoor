@@ -6,9 +6,10 @@
 		isSelected: boolean;
 		onClick: () => void;
 		displayChaOverride?: number | null;
+		isEntrenchable?: boolean;
 	}
 
-	const { card, isSelected, onClick, displayChaOverride = null }: Props = $props();
+	const { card, isSelected, onClick, displayChaOverride = null, isEntrenchable = false }: Props = $props();
 
 	const COLOR_BG: Record<string, string> = {
 		red: '#fee2e2',
@@ -34,8 +35,21 @@
 		underdog: 'Underdog'
 	};
 
+	const ABILITY_EMOJIS: Record<string, string> = {
+		scout: '🔍',
+		hometown: '🏠',
+		pollster: '🎲',
+		hard_worker: '💪',
+		independent: '⚡',
+		mr_popular: '⭐',
+		disadvantage: '⬇️',
+		coalition: '🤝',
+		underdog: '🐾'
+	};
+
 	const displayCha = $derived(displayChaOverride !== null ? displayChaOverride : card.charisma);
 	const abilityLabel = $derived(card.ability !== 'none' ? (ABILITY_LABELS[card.ability] ?? card.ability) : null);
+	const abilityEmoji = $derived(card.ability !== 'none' ? (ABILITY_EMOJIS[card.ability] ?? null) : null);
 </script>
 
 <button
@@ -46,18 +60,24 @@
 	onclick={onClick}
 	aria-pressed={isSelected}
 >
+	{#if isEntrenchable}
+		<span class="entrench-badge">+2</span>
+	{/if}
 	<span class="cha">{displayCha}</span>
 	{#if card.type === 'party_leader'}
-		<span class="label leader">★ Leader</span>
+		<span class="label label-text leader">★ Leader</span>
+		<span class="label label-emoji leader">★</span>
 	{:else if abilityLabel}
-		<span class="label ability">{abilityLabel}</span>
+		<span class="label label-text ability">{abilityLabel}</span>
+		{#if abilityEmoji}<span class="label label-emoji ability">{abilityEmoji}</span>{/if}
 	{:else}
-		<span class="label">{card.color}</span>
+		<span class="label label-text">{card.color}</span>
 	{/if}
 </button>
 
 <style>
 	.card {
+		position: relative;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
@@ -70,6 +90,20 @@
 		flex-shrink: 0;
 		transition: transform 0.1s, box-shadow 0.1s;
 		padding: 0;
+	}
+
+	.entrench-badge {
+		position: absolute;
+		top: 2px;
+		right: 2px;
+		font-size: 0.45rem;
+		font-weight: 700;
+		color: white;
+		background: #d97706;
+		border-radius: 3px;
+		padding: 0 2px;
+		line-height: 1.5;
+		pointer-events: none;
 	}
 
 	.card:hover {
@@ -105,5 +139,30 @@
 	.label.leader {
 		color: #7c3aed;
 		font-weight: 600;
+	}
+
+	.label-emoji {
+		display: none;
+		font-style: normal;
+	}
+
+	@media (max-width: 640px) {
+		.card {
+			width: 46px;
+			height: 66px;
+		}
+		.cha {
+			font-size: 1.25rem;
+		}
+		.label-text {
+			display: none;
+		}
+		.label-emoji {
+			display: block;
+			font-size: 0.85rem;
+			letter-spacing: 0;
+			text-transform: none;
+			margin-top: 1px;
+		}
 	}
 </style>

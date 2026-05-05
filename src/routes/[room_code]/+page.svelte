@@ -11,6 +11,7 @@
 	import MrPopularColorModal from '$lib/components/MrPopularColorModal.svelte';
 	import ScoutingPanel from '$lib/components/ScoutingPanel.svelte';
 	import ScoutSwapToast from '$lib/components/ScoutSwapToast.svelte';
+	import RulesModal from '$lib/components/RulesModal.svelte';
 	import {
 		mp,
 		initMultiplayer,
@@ -36,6 +37,13 @@
 	const coloredTiles = COLORED_TILE_COLORS;
 
 	let initialized = $state(false);
+	let showRules = $state(false);
+
+	$effect(() => {
+		if (!mp.error) return;
+		const t = setTimeout(() => { mp.error = null; }, 4000);
+		return () => clearTimeout(t);
+	});
 
 	onMount(async () => {
 		const raw = localStorage.getItem('madripoor_session');
@@ -87,6 +95,28 @@
 
 	// True if this player has a Scout card placed — determines scouting panel visibility
 	const iAmScout = $derived(Object.values(mp.myPlacements).some((c) => c.ability === 'scout'));
+
+	const iAmBuying = $derived(mp.buyingTurnUserId === mp.myUserId);
+	const buyerName = $derived(mp.players.find(p => p.userId === mp.buyingTurnUserId)?.displayName ?? 'Someone');
+
+	const entrenchHints = $derived.by((): Record<number, string> => {
+		if (mp.phase !== 'placement') return {};
+		const prev = mp.history.at(-1);
+		if (!prev || !mp.myUserId) return {};
+		const myPrev = prev.allPlacements[mp.myUserId] ?? {};
+		return Object.fromEntries(
+			Object.entries(myPrev).map(([tid, c]) => [Number(tid), c.id])
+		);
+	});
+
+	const entrenchTargetTiles = $derived.by((): Set<number> => {
+		if (!mp.selectedCard || Object.keys(entrenchHints).length === 0) return new Set();
+		return new Set(
+			Object.entries(entrenchHints)
+				.filter(([, cardId]) => cardId === mp.selectedCard!.id)
+				.map(([tid]) => Number(tid))
+		);
+	});
 
 	const BADGE_COLORS: Record<string, string> = {
 		hometown: '#15803d', independent: '#15803d',
@@ -152,7 +182,10 @@
 {:else}
 	<main class:has-overlay={hasOverlay}>
 		<header>
-			<h1>Madripoor</h1>
+			<div class="header-row">
+				<h1>Madripoor</h1>
+				<button class="rules-btn" onclick={() => showRules = true} aria-label="Rules">☰</button>
+			</div>
 			<div class="round-info">
 				Round {mp.roundNumber}
 				&nbsp;·&nbsp;
@@ -203,6 +236,26 @@
 						<span class="phase-hint">{gerryName} is redistricting…</span>
 					{/if}
 				</div>
+			{:else if mp.phase === 'card_buying'}
+				<div class="placement-bar">
+					{#if iAmBuying}
+						<span class="phase-hint">Your turn to buy</span>
+					{:else}
+						<span class="phase-hint">{buyerName} is buying…</span>
+					{/if}
+				</div>
+			{:else if mp.phase === 'resolution'}
+				<div class="placement-bar">
+					<span class="phase-hint">Round results →</span>
+				</div>
+			{:else if mp.phase === 'round_end'}
+				<div class="placement-bar">
+					<span class="phase-hint">Round complete — see results →</span>
+				</div>
+			{:else if mp.phase === 'game_over'}
+				<div class="placement-bar">
+					<span class="phase-hint">Game over</span>
+				</div>
 			{/if}
 		</header>
 
@@ -219,6 +272,8 @@
 			isGerrymandering={mp.phase === 'gerrymandering'}
 			onTileClick={tileClickHandler}
 			tileAbilityBadges={showResults ? tileAbilityBadges : undefined}
+			{entrenchHints}
+			{entrenchTargetTiles}
 		/>
 
 		{#if mp.phase === 'placement'}
@@ -263,6 +318,10 @@
 	<div class="error-toast">{mp.error}</div>
 {/if}
 
+{#if showRules}
+	<RulesModal onClose={() => showRules = false} />
+{/if}
+
 <style>
 	.loading {
 		display: flex;
@@ -297,10 +356,32 @@
 		gap: 6px;
 	}
 
+	.header-row {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		width: 100%;
+		max-width: 600px;
+	}
+
 	h1 {
 		margin: 0;
 		font-size: 1.5rem;
 		letter-spacing: 0.05em;
+	}
+
+	.rules-btn {
+		background: none;
+		border: none;
+		font-size: 1.3rem;
+		cursor: pointer;
+		color: #9ca3af;
+		padding: 4px 8px;
+		line-height: 1;
+	}
+
+	.rules-btn:hover {
+		color: #374151;
 	}
 
 	.round-info {
@@ -397,5 +478,19 @@
 		font-size: 1.1rem;
 		color: #374151;
 		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+	}
+
+	@media (max-width: 640px) {
+		main {
+			padding-left: 0.75rem;
+			padding-right: 0.75rem;
+		}
+		main.has-overlay {
+			padding-right: 0.75rem;
+		}
+		.round-info {
+			text-align: center;
+			line-height: 1.5;
+		}
 	}
 </style>
