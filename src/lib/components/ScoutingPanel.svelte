@@ -1,15 +1,18 @@
 <script lang="ts">
-	import { mp, peekScout, swapScout, keepScout } from '$lib/game/multiplayerStore.svelte.js';
+	import { mp, peekScout, swapScout, swapScoutOnly, keepScout } from '$lib/game/multiplayerStore.svelte.js';
 	import type { Card } from '$lib/game/types.js';
 
-	// Find the scout tile(s) for this player
+	// Find all scout tiles for this player
 	const myScoutTileIds = $derived(
 		Object.entries(mp.myPlacements)
 			.filter(([, card]) => card.ability === 'scout')
 			.map(([tileId]) => Number(tileId))
 	);
-	// For simplicity, handle first scout tile (most players will have at most 1)
-	const scoutTileId = $derived(myScoutTileIds[0] ?? null);
+
+	let currentScoutIndex = $state(0);
+	const scoutTileId = $derived(myScoutTileIds[currentScoutIndex] ?? null);
+	const isLastScout = $derived(currentScoutIndex >= myScoutTileIds.length - 1);
+	const scoutCount = $derived(myScoutTileIds.length);
 
 	let peekedCards = $state<{ userId: string; card: Card; tileId: number }[]>([]);
 	let swapTargetTileId = $state<number | null>(null);
@@ -19,6 +22,7 @@
 	async function loadPeek() {
 		if (!scoutTileId) return;
 		loading = true;
+		peekedCards = [];
 		try {
 			const rows = await peekScout(scoutTileId);
 			peekedCards = rows
@@ -31,23 +35,37 @@
 		}
 	}
 
-	// Load peek on mount
+	// Load peek on mount and whenever the active scout tile changes
 	$effect(() => {
 		if (scoutTileId) loadPeek();
 	});
 
+	function advanceToNextScout() {
+		currentScoutIndex += 1;
+		swapTargetTileId = null;
+	}
+
 	async function handleSwap() {
 		if (swapTargetTileId === null || !scoutTileId) return;
-		done = true;
-		await swapScout(scoutTileId, swapTargetTileId);
+		if (isLastScout) {
+			done = true;
+			await swapScout(scoutTileId, swapTargetTileId);
+		} else {
+			await swapScoutOnly(scoutTileId, swapTargetTileId);
+			advanceToNextScout();
+		}
 	}
 
 	async function handleKeep() {
-		done = true;
-		await keepScout();
+		if (isLastScout) {
+			done = true;
+			await keepScout();
+		} else {
+			advanceToNextScout();
+		}
 	}
 
-	// Tiles available for swap target (own placements, excluding the scout tile)
+	// Tiles available for swap (own placements excluding the current scout tile)
 	const swapOptions = $derived(
 		Object.entries(mp.myPlacements)
 			.filter(([tileId]) => Number(tileId) !== scoutTileId)
@@ -56,7 +74,7 @@
 </script>
 
 <div class="scouting-panel">
-	<h3>Scout Phase</h3>
+	<h3>Scout Phase{scoutCount > 1 ? ` (${currentScoutIndex + 1} / ${scoutCount})` : ''}</h3>
 	{#if done}
 		<p>Waiting for other scouts…</p>
 	{:else if loading}

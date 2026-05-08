@@ -1002,6 +1002,19 @@ export async function swapScout(scoutTileId: number, targetTileId: number): Prom
 	}
 }
 
+export async function swapScoutOnly(scoutTileId: number, targetTileId: number): Promise<void> {
+	if (!mp.gameId) return;
+	const gameId = mp.gameId;
+	try {
+		await db.submitScoutSwap(gameId, mp.roundNumber, scoutTileId, targetTileId, false);
+		const rows = await db.getCardPlacements(gameId, mp.roundNumber);
+		const myRows = rows.filter((r) => r.user_id === mp.myUserId);
+		mp.myPlacements = Object.fromEntries(myRows.map((r) => [r.tile_id, r.card_json]));
+	} catch (e) {
+		reportError('Action failed — please try again', e);
+	}
+}
+
 export async function peekScout(tileId: number): Promise<CardPlacementRow[]> {
 	if (!mp.gameId) return [];
 	return db.peekScoutTile(mp.gameId, mp.roundNumber, tileId);
