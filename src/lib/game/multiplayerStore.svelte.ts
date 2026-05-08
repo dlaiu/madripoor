@@ -578,6 +578,20 @@ function onPhaseTransition(from: MultiplayerPhase, to: MultiplayerPhase): void {
 	// Reload hand from DB (hand_json was not updated during placement, so it still has the full hand)
 	if (to === 'card_buying' && mp.gameId && mp.myUserId) {
 		loadMyHand(mp.gameId, mp.myUserId, mp.roundNumber).catch(console.error);
+		// Non-hosts: push own-placement snapshot so entrenchHints work next round.
+		// Hosts already push a complete allPlacements snapshot in advanceToNextRound().
+		if (!isHost() && !mp.history.find((h) => h.roundNumber === mp.roundNumber)) {
+			mp.history = [
+				...mp.history,
+				{
+					roundNumber: mp.roundNumber,
+					allPlacements: { [mp.myUserId]: { ...mp.myPlacements } },
+					groups: mp.groups,
+					tileResults: mp.tileResults,
+					groupResults: mp.groupResults
+				}
+			];
+		}
 	}
 }
 
