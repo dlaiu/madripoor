@@ -536,7 +536,8 @@ export async function submitScoutSwap(
 	gameId: string,
 	roundNumber: number,
 	scoutTileId: number,
-	targetTileId: number
+	targetTileId: number,
+	markDone = true
 ): Promise<void> {
 	const userId = (await supabase.auth.getUser()).data.user!.id;
 	// Swap the two card_placements rows for this player
@@ -565,17 +566,18 @@ export async function submitScoutSwap(
 		)
 	);
 
-	// Mark scout_swap + scout_done
-	unwrap(
-		await supabase
-			.from('game_players')
-			.update({
-				scout_swap: { scoutTileId, targetTileId, actorUserId: userId },
-				scout_done: true
-			})
-			.eq('game_id', gameId)
-			.eq('user_id', userId)
-	);
+	if (markDone) {
+		unwrap(
+			await supabase
+				.from('game_players')
+				.update({
+					scout_swap: { scoutTileId, targetTileId, actorUserId: userId },
+					scout_done: true
+				})
+				.eq('game_id', gameId)
+				.eq('user_id', userId)
+		);
+	}
 }
 
 export async function setScoutDone(gameId: string): Promise<void> {

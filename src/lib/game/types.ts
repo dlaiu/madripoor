@@ -105,6 +105,7 @@ export interface GameState {
 		humanScoutTileId: number;
 		peekedCard: Card;           // CPU card on the scout's tile (shown immediately)
 		swapTargetTileId: number | null; // human's other tile they want to move scout to
+		remainingScoutTileIds: number[]; // scout tiles not yet processed
 	} | null;
 }
 

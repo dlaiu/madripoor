@@ -138,19 +138,41 @@ export function startScouting(): void {
 	const cpuMap = cpuPlaceCards(game.cpuHand, TILE_IDS);
 	game.currentRound.cpuPlacements = Object.fromEntries(cpuMap);
 
-	const humanScoutEntry = Object.entries(game.currentRound.humanPlacements)
-		.find(([, c]) => c.ability === 'scout');
+	const humanScoutTileIds = Object.entries(game.currentRound.humanPlacements)
+		.filter(([, c]) => c.ability === 'scout')
+		.map(([id]) => Number(id));
 
-	if (humanScoutEntry) {
-		const humanScoutTileId = Number(humanScoutEntry[0]);
-		const peekedCard = game.currentRound.cpuPlacements[humanScoutTileId];
+	if (humanScoutTileIds.length > 0) {
+		const [firstTileId, ...rest] = humanScoutTileIds;
+		const peekedCard = game.currentRound.cpuPlacements[firstTileId];
 		if (peekedCard) {
-			game.soloScoutState = { humanScoutTileId, peekedCard, swapTargetTileId: null };
+			game.soloScoutState = { humanScoutTileId: firstTileId, peekedCard, swapTargetTileId: null, remainingScoutTileIds: rest };
 			game.phase = 'scouting';
 			return;
 		}
 	}
 	startReveal();
+}
+
+function advanceScout(): void {
+	const remaining = game.soloScoutState?.remainingScoutTileIds ?? [];
+	game.soloScoutState = null;
+	activateNextScout(remaining);
+}
+
+function activateNextScout(remaining: number[]): void {
+	if (remaining.length === 0) {
+		startReveal();
+		return;
+	}
+	const [nextTileId, ...rest] = remaining;
+	const peekedCard = game.currentRound.cpuPlacements[nextTileId];
+	if (!peekedCard) {
+		// No CPU card on this tile — skip to next scout
+		activateNextScout(rest);
+		return;
+	}
+	game.soloScoutState = { humanScoutTileId: nextTileId, peekedCard, swapTargetTileId: null, remainingScoutTileIds: rest };
 }
 
 // Human clicks one of their OTHER placed tiles to move the scout there
@@ -170,13 +192,11 @@ export function soloScoutSwap(): void {
 	// Swap: scout moves to target tile, target card moves to scout's original tile
 	const newHuman = { ...game.currentRound.humanPlacements, [s.swapTargetTileId]: humanScout, [s.humanScoutTileId]: humanTarget };
 	game.currentRound.humanPlacements = newHuman;
-	game.soloScoutState = null;
-	startReveal();
+	advanceScout();
 }
 
 export function soloScoutKeep(): void {
-	game.soloScoutState = null;
-	startReveal();
+	advanceScout();
 }
 
 export function startReveal(): void {
