@@ -893,9 +893,13 @@ export async function confirmGerrymandering(): Promise<void> {
 
 export async function clearGroups(): Promise<void> {
 	if (!mp.gameId || !isGerrymanderer()) return;
+	// Capture group IDs before clearing local state — we delete by ID rather than
+	// clearGroupsForRound to avoid a race where this late-completing DB call wipes
+	// groups that confirmGerrymandering already wrote under the same round number.
+	const ids = mp.groups.map((g) => g.id);
 	mp.groups = [];
 	mp.gerrySelectedTileId = null;
-	await db.clearGroupsForRound(mp.gameId, mp.roundNumber);
+	await Promise.all(ids.map((id) => db.deleteGroup(mp.gameId!, mp.roundNumber, id)));
 }
 
 export async function advanceToNextRound(): Promise<void> {
