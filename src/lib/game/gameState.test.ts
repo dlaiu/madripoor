@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { game, selectCard, placeCard, unplaceCard, resetGame } from './gameState.svelte.js';
+import { game, selectCard, placeCard, unplaceCard, resetGame, soloScoutKeep, soloScoutSwap, startScouting } from './gameState.svelte.js';
+import type { Card } from './types.js';
 
 beforeEach(() => {
 	resetGame();
@@ -105,5 +106,153 @@ describe('unplaceCard', () => {
 	it('is a no-op when tile has no card placed', () => {
 		unplaceCard(1);
 		expect(game.humanHand.length).toBe(15);
+	});
+});
+
+describe('multi-scout solo mode', () => {
+	const makeCard = (id: string, ability: Card['ability'] = 'none'): Card => ({
+		id,
+		owner: 'human',
+		color: 'red',
+		charisma: 2,
+		type: 'generic',
+		ability
+	});
+
+	describe('startScouting', () => {
+		it('sets remainingScoutTileIds to [] for a single scout', () => {
+			game.currentRound.humanPlacements = { 1: makeCard('s1', 'scout') };
+			startScouting();
+			expect(game.phase).toBe('scouting');
+			expect(game.soloScoutState?.humanScoutTileId).toBe(1);
+			expect(game.soloScoutState?.remainingScoutTileIds).toEqual([]);
+		});
+
+		it('sets remainingScoutTileIds to the second tile when two scouts are placed', () => {
+			game.currentRound.humanPlacements = {
+				1: makeCard('s1', 'scout'),
+				2: makeCard('s2', 'scout')
+			};
+			startScouting();
+			expect(game.phase).toBe('scouting');
+			expect(game.soloScoutState?.humanScoutTileId).toBe(1);
+			expect(game.soloScoutState?.remainingScoutTileIds).toEqual([2]);
+		});
+	});
+
+	describe('soloScoutKeep', () => {
+		it('activates the next scout when more remain', () => {
+			const nextCpuCard = makeCard('cpu-2');
+			game.currentRound.cpuPlacements = { 2: nextCpuCard };
+			game.soloScoutState = {
+				humanScoutTileId: 1,
+				peekedCard: makeCard('cpu-1'),
+				swapTargetTileId: null,
+				remainingScoutTileIds: [2]
+			};
+			game.phase = 'scouting';
+
+			soloScoutKeep();
+
+			expect(game.soloScoutState?.humanScoutTileId).toBe(2);
+			expect(game.soloScoutState?.peekedCard).toStrictEqual(nextCpuCard);
+			expect(game.soloScoutState?.remainingScoutTileIds).toEqual([]);
+			expect(game.phase).toBe('scouting');
+		});
+
+		it('transitions to revealing when no scouts remain', () => {
+			game.soloScoutState = {
+				humanScoutTileId: 1,
+				peekedCard: makeCard('cpu-1'),
+				swapTargetTileId: null,
+				remainingScoutTileIds: []
+			};
+			game.phase = 'scouting';
+
+			soloScoutKeep();
+
+			expect(game.soloScoutState).toBeNull();
+			expect(game.phase).toBe('revealing');
+		});
+
+		it('skips a remaining scout tile that has no CPU card and activates the next valid one', () => {
+			const cpuCard3 = makeCard('cpu-3');
+			game.currentRound.cpuPlacements = { 3: cpuCard3 }; // no CPU card on tile 2
+			game.soloScoutState = {
+				humanScoutTileId: 1,
+				peekedCard: makeCard('cpu-1'),
+				swapTargetTileId: null,
+				remainingScoutTileIds: [2, 3]
+			};
+			game.phase = 'scouting';
+
+			soloScoutKeep();
+
+			expect(game.soloScoutState?.humanScoutTileId).toBe(3);
+			expect(game.soloScoutState?.peekedCard).toStrictEqual(cpuCard3);
+		});
+
+		it('goes to revealing when all remaining scouts have no CPU card', () => {
+			game.currentRound.cpuPlacements = {}; // no CPU cards anywhere
+			game.soloScoutState = {
+				humanScoutTileId: 1,
+				peekedCard: makeCard('cpu-1'),
+				swapTargetTileId: null,
+				remainingScoutTileIds: [2, 3]
+			};
+			game.phase = 'scouting';
+
+			soloScoutKeep();
+
+			expect(game.soloScoutState).toBeNull();
+			expect(game.phase).toBe('revealing');
+		});
+	});
+
+	describe('soloScoutSwap', () => {
+		it('swaps cards and activates the next scout when more remain', () => {
+			const scoutCard = makeCard('scout-1', 'scout');
+			const targetCard = makeCard('other-3');
+			const nextCpuCard = makeCard('cpu-2');
+
+			game.currentRound.humanPlacements = { 1: scoutCard, 3: targetCard };
+			game.currentRound.cpuPlacements = { 2: nextCpuCard };
+			game.soloScoutState = {
+				humanScoutTileId: 1,
+				peekedCard: makeCard('cpu-1'),
+				swapTargetTileId: 3,
+				remainingScoutTileIds: [2]
+			};
+			game.phase = 'scouting';
+
+			soloScoutSwap();
+
+			expect(game.currentRound.humanPlacements[1]).toStrictEqual(targetCard);
+			expect(game.currentRound.humanPlacements[3]).toStrictEqual(scoutCard);
+			expect(game.soloScoutState?.humanScoutTileId).toBe(2);
+			expect(game.soloScoutState?.peekedCard).toStrictEqual(nextCpuCard);
+			expect(game.phase).toBe('scouting');
+		});
+
+		it('swaps cards and transitions to revealing when no scouts remain', () => {
+			const scoutCard = makeCard('scout-1', 'scout');
+			const targetCard = makeCard('other-3');
+
+			game.currentRound.humanPlacements = { 1: scoutCard, 3: targetCard };
+			game.soloScoutState = {
+				humanScoutTileId: 1,
+				peekedCard: makeCard('cpu-1'),
+				swapTargetTileId: 3,
+				remainingScoutTileIds: []
+			};
+			game.phase = 'scouting';
+
+			soloScoutSwap();
+
+			expect(game.currentRound.humanPlacements[1]).toStrictEqual(targetCard);
+			expect(game.currentRound.humanPlacements[3]).toStrictEqual(scoutCard);
+			expect(game.soloScoutState).toBeNull();
+			expect(game.phase).toBe('revealing');
+		});
 	});
 });
