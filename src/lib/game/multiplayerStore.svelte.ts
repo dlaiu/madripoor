@@ -238,7 +238,54 @@ export async function initMultiplayer(
 		}
 	}
 
+	// Reconstruct history so entrenchment detection survives page refresh.
+	// Only needed when there are completed rounds (round 2+).
+	if (gameRow.round_number >= 2) {
+		await reconstructHistory(gameId, gameRow.round_number - 1);
+	}
+
 	subscribeRealtime(gameId);
+}
+
+async function reconstructHistory(gameId: string, upToRound: number): Promise<void> {
+	if (upToRound < 1) return;
+
+	const rounds = Array.from({ length: upToRound }, (_, i) => i + 1);
+	const fetches = await Promise.all(
+		rounds.map((r) =>
+			Promise.all([
+				db.getCardPlacements(gameId, r),
+				db.getRoundResults(gameId, r)
+			])
+		)
+	);
+
+	const snapshots: MPRoundSnapshot[] = [];
+	for (let i = 0; i < rounds.length; i++) {
+		const r = rounds[i];
+		const [placementRows, results] = fetches[i];
+		if (!results) continue;
+
+		const allPlacements: Record<string, Record<number, Card>> = {};
+		for (const row of placementRows) {
+			if (!allPlacements[row.user_id]) allPlacements[row.user_id] = {};
+			let card = coerceCard(row.card_json as unknown as Record<string, unknown>);
+			if (card.ability === 'mr_popular' && row.declared_color) {
+				card = { ...card, color: row.declared_color };
+			}
+			allPlacements[row.user_id][row.tile_id] = card;
+		}
+
+		snapshots.push({
+			roundNumber: r,
+			allPlacements,
+			groups: [],
+			tileResults: results.tileResults,
+			groupResults: results.groupResults
+		});
+	}
+
+	mp.history = snapshots;
 }
 
 async function loadMyHand(gameId: string, myUserId: string, roundNumber: number): Promise<void> {
